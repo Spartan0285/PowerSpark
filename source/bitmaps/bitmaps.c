@@ -784,6 +784,30 @@ void *bitmap_mipmap_address(
 	return mipmap_address;
 }
 
+/* port: a 16 or 32 bit texel of a bitmap the CPU samples. In an Xbox map's session on a big-endian host the pixels are as the
+map holds them (little-endian; the GPU upload reads the same bytes), so a texel is read from its bytes; a retail map's pixels
+were converted to the host's order when they were loaded (port/mac/native_bitmap_tags.c). */
+#if defined(__BIG_ENDIAN__) || defined(__ppc__) || defined(__POWERPC__)
+extern int mac_xbox_mode(void); /* port: port/mac/engine_cache_files.c */
+static word bitmap_texel_word(void const *address, long index)
+{
+	byte const *b = (byte const *)address + index * 2;
+
+	return mac_xbox_mode() ? (word)(b[0] | (b[1] << 8)) : ((word const *)address)[index];
+}
+
+static pixel32 bitmap_texel_long(void const *address, long index)
+{
+	byte const *b = (byte const *)address + index * 4;
+
+	return mac_xbox_mode() ? ((pixel32)b[0] | ((pixel32)b[1] << 8) | ((pixel32)b[2] << 16) | ((pixel32)b[3] << 24)) :
+		((pixel32 const *)address)[index];
+}
+#else
+#define bitmap_texel_word(address, index) (((word const *)(address))[(index)])
+#define bitmap_texel_long(address, index) (((pixel32 const *)(address))[(index)])
+#endif
+
 pixel32 bitmap_format_to_a8r8g8b8(
 	short format,
 	void const *mipmap_address,
@@ -800,7 +824,7 @@ pixel32 bitmap_format_to_a8r8g8b8(
 	{
 	case _bitmap_format_r5g6b5:
 	{
-		word pixel = ((word const *)mipmap_address)[pixel_index];
+		word pixel = bitmap_texel_word(mipmap_address, pixel_index);
 
 		result = 0xFF000000 |
 			(((((pixel >> 11) & 0x1F) << 3) | (((pixel >> 11) & 0x1F) >> 2)) << 16) |
@@ -811,7 +835,7 @@ pixel32 bitmap_format_to_a8r8g8b8(
 
 	case _bitmap_format_a1r5g5b5:
 	{
-		word pixel = ((word const *)mipmap_address)[pixel_index];
+		word pixel = bitmap_texel_word(mipmap_address, pixel_index);
 
 		result = (((pixel >> 15) * 0xFF) << 24) |
 			(((((pixel >> 10) & 0x1F) << 3) | (((pixel >> 10) & 0x1F) >> 2)) << 16) |
@@ -822,7 +846,7 @@ pixel32 bitmap_format_to_a8r8g8b8(
 
 	case _bitmap_format_a4r4g4b4:
 	{
-		word pixel = ((word const *)mipmap_address)[pixel_index];
+		word pixel = bitmap_texel_word(mipmap_address, pixel_index);
 
 		result = (((((pixel >> 12) & 0xF) << 4) | ((pixel >> 12) & 0xF)) << 24) |
 			(((((pixel >> 8) & 0xF) << 4) | ((pixel >> 8) & 0xF)) << 16) |
@@ -832,11 +856,11 @@ pixel32 bitmap_format_to_a8r8g8b8(
 	}
 
 	case _bitmap_format_x8r8g8b8:
-		result = ((pixel32 const *)mipmap_address)[pixel_index];
+		result = bitmap_texel_long(mipmap_address, pixel_index);
 		break;
 
 	case _bitmap_format_a8r8g8b8:
-		result = ((pixel32 const *)mipmap_address)[pixel_index];
+		result = bitmap_texel_long(mipmap_address, pixel_index);
 		break;
 
 	case _bitmap_format_a8:
@@ -861,7 +885,7 @@ pixel32 bitmap_format_to_a8r8g8b8(
 
 	case _bitmap_format_a8y8:
 	{
-		word pixel = ((word const *)mipmap_address)[pixel_index];
+		word pixel = bitmap_texel_word(mipmap_address, pixel_index);
 		byte intensity = (byte)pixel;
 
 		result = ((pixel >> 8) << 24) | (intensity << 16) | (intensity << 8) | intensity;

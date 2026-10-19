@@ -69,6 +69,36 @@ struct s3tc_fcolor
 	real rgba[4];
 };
 
+/* port: an S3TC block is little-endian in a bitmap's pixels (the console's and the maps' layout), and the decoders below read its
+words and long as the host stores them. In an Xbox map's session on a big-endian host the pixels are as the map holds them (the
+GPU upload reads the same bytes), so the blocks are read from a copy made as the little-endian bytes say; a retail map's
+pixels were converted to the host's order when they were loaded (port/mac/native_bitmap_tags.c) and are read as they are. A
+bitmap the CPU samples (an object's lighting is taken from the lightmap's and the diffuse map's blocks) was decoded as
+byte-swapped colours, indices and alphas on the Mac's PowerPC. */
+#if defined(__BIG_ENDIAN__) || defined(__ppc__) || defined(__POWERPC__)
+extern int mac_xbox_mode(void); /* port: port/mac/engine_cache_files.c */
+static word s3tc_little_endian_word(word const *p)
+{
+	byte const *b = (byte const *)p;
+
+	return (word)(b[0] | (b[1] << 8));
+}
+
+static void s3tc_native_block(struct s3tc_block_rgb const *source, struct s3tc_block_rgb *native)
+{
+	byte const *b = (byte const *)source;
+
+	native->color0 = (word)(b[0] | (b[1] << 8));
+	native->color1 = (word)(b[2] | (b[3] << 8));
+	native->bitmap = (unsigned long)b[4] | ((unsigned long)b[5] << 8) | ((unsigned long)b[6] << 16) | ((unsigned long)b[7] << 24);
+}
+#define S3TC_NATIVE_BLOCK(source, native) (mac_xbox_mode() ? (s3tc_native_block((source), &(native)), (source) = &(native)) : (void)0)
+#define S3TC_ALPHA_WORD(source, index) (mac_xbox_mode() ? s3tc_little_endian_word(&(source)->alpha_bitmap[(index)]) : (source)->alpha_bitmap[(index)])
+#else
+#define S3TC_NATIVE_BLOCK(source, native) ((void)0)
+#define S3TC_ALPHA_WORD(source, index) ((source)->alpha_bitmap[(index)])
+#endif
+
 /* ---------- prototypes */
 
 static void ColorToFcolor(
@@ -591,12 +621,14 @@ void DecodeBlockRGB(
 	unsigned long bitmap;
 	long pixel;
 	long channel;
+	struct s3tc_block_rgb s3tc_native;
 
 	if (source == NULL)
 	{
 		memset(colors, 0, S3TC_BLOCK_PIXELS * sizeof(struct s3tc_color));
 		return;
 	}
+	S3TC_NATIVE_BLOCK(source, s3tc_native);
 
 	RGBToColor(&source->color0, &color[0]);
 	RGBToColor(&source->color1, &color[1]);
@@ -652,6 +684,7 @@ void DecodeBlockRGB__single_pixel(
 {
 	struct s3tc_color colors[4];
 	long channel;
+	struct s3tc_block_rgb s3tc_native;
 
 	if (pblockSrc == NULL)
 	{
@@ -671,6 +704,7 @@ void DecodeBlockRGB__single_pixel(
 		return;
 	}
 
+	S3TC_NATIVE_BLOCK(pblockSrc, s3tc_native);
 	RGBToColor(&pblockSrc->color0, &colors[0]);
 	RGBToColor(&pblockSrc->color1, &colors[1]);
 	colors[0].rgba[S3TC_ALPHA] = colors[1].rgba[S3TC_ALPHA] = colors[2].rgba[S3TC_ALPHA] = 0xFF;
@@ -729,7 +763,7 @@ void DecodeBlockAlpha4(
 
 	for (row = 0; row < 4; ++row)
 	{
-		alpha = source->alpha_bitmap[row];
+		alpha = S3TC_ALPHA_WORD(source, row);
 
 		for (column = 0; column < 4; ++column)
 		{
@@ -752,7 +786,7 @@ void DecodeBlockAlpha4__single_pixel(
 
 	DecodeBlockRGB__single_pixel(&source->rgb, color, u, v);
 
-	alpha = (source->alpha_bitmap[v] >> (4 * u)) & 0xF;
+	alpha = (S3TC_ALPHA_WORD(source, v) >> (4 * u)) & 0xF;
 	color->rgba[S3TC_ALPHA] = (alpha << 4) | alpha;
 
 	return;
