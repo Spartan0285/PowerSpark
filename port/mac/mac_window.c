@@ -497,8 +497,19 @@ static void mac_window_ui_mode(struct mac_window_state *state,int hidden)
 
 static void mac_window_ui_update(struct mac_window_state *state)
 {
-    mac_window_ui_mode(state,state->borderless&&state->input.focused&&state->window&&
-        IsWindowActive(state->window)&&!IsWindowCollapsed(state->window));
+    int hidden=state->borderless&&state->input.focused&&state->window&&
+        IsWindowActive(state->window)&&!IsWindowCollapsed(state->window);
+    mac_window_ui_mode(state,hidden);
+    /* port: the Dock and menu bar are hidden only for the front application,
+       so a request made before the game was in front (at the start), or one
+       the system dropped, is not kept although the state says so (Mac OS X
+       10.5 with a theme's Dock left a box over the picture): ask again
+       whenever the system reports another mode */
+    if(hidden&&state->ui_hidden) {
+        SystemUIMode mode=kUIModeNormal;SystemUIOptions options=0;
+        GetSystemUIMode(&mode,&options);
+        if(mode!=kUIModeAllHidden)SetSystemUIMode(kUIModeAllHidden,0);
+    }
 }
 
 /* (the application or the window was deactivated: the cursor is the user's
