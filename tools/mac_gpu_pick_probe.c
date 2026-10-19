@@ -31,6 +31,21 @@ int main(void)
     CHECK(mac_gpu_pick_texture_skip_levels(32, "prisoner") == 1);
     CHECK(mac_gpu_pick_texture_skip_levels(32, "b30") == 1);
     CHECK(mac_gpu_pick_texture_skip_levels(32, "bloodgulch") == 0);
+    /* a cache short of room (under 12 MB) skips a level on any map; a card over 32 MB never does */
+    CHECK(mac_gpu_pick_texture_skip_levels_for(32, "bloodgulch", 11) == 1);
+    CHECK(mac_gpu_pick_texture_skip_levels_for(32, "bloodgulch", 12) == 0);
+    CHECK(mac_gpu_pick_texture_skip_levels_for(32, "bloodgulch", 0) == 0);
+    CHECK(mac_gpu_pick_texture_skip_levels_for(64, "bloodgulch", 8) == 0);
+    /* the cache from the free video memory: free less 10 MB, 8 to the pick; a larger card or no answer: the pick */
+    CHECK(mac_gpu_pick_texture_cache_from_free(16, 32, 30) == 16);
+    CHECK(mac_gpu_pick_texture_cache_from_free(16, 32, 22) == 12);
+    CHECK(mac_gpu_pick_texture_cache_from_free(16, 32, 12) == 8);
+    CHECK(mac_gpu_pick_texture_cache_from_free(16, 32, 0) == 8);
+    CHECK(mac_gpu_pick_texture_cache_from_free(16, 32, -1) == 16);
+    CHECK(mac_gpu_pick_texture_cache_from_free(32, 64, 5) == 32);
+    /* the 16-bit formats at two bytes on a card of 32 MB or less */
+    CHECK(mac_gpu_pick_texture_native_depth(32) == 2);
+    CHECK(mac_gpu_pick_texture_native_depth(64) == 1);
     CHECK(mac_gpu_pick_texture_skip_levels(64, "longest") == 0);
     CHECK(mac_gpu_pick_texture_skip_levels(32, "") == 0);
     CHECK(mac_gpu_pick_texture_skip_levels(32, NULL) == 0);

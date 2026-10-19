@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <dlfcn.h>
+#include <mach/mach_time.h>
 #include "mac_xgpu_texture_decode_view.inc"
 #include "../linux/src/texture_pack.h" /* port: texture packs (port/linux/src/texture_pack.c); weak, as the tools that link this file do not all link it */
 extern int texture_pack_open(const char *, const char *, unsigned int, int, int, size_t, char *, size_t) __attribute__((weak));
@@ -90,6 +91,8 @@ static int retail_texture_skip_levels = -1;
    mac.texture_cache_mb, their auto resolved */
 extern int mac_gpu_info_texture_skip_levels(void) __attribute__((weak));
 extern long mac_gpu_info_texture_cache_mb(void) __attribute__((weak));
+extern long mac_gpu_info_free_vram_mb(void) __attribute__((weak));
+extern int mac_gpu_info_texture_cache_auto(void) __attribute__((weak));
 static unsigned texture_levels_to_skip(unsigned levels, uint32_t width, uint32_t height)
 {
     unsigned skip = 0;
@@ -1707,6 +1710,29 @@ static const unsigned char *engine_texels_little_endian(const D3DBaseTexture *na
 #define engine_texels_little_endian(native, description, texels, length) (texels)
 #endif
 
+/* port: on a card of 32 MB or less the cache's automatic size (mac.texture_cache_mb 0) is made smaller by
+   2 MB, to 8 MB at least, whenever the system says that under 2 MB of video memory is free (looked at
+   once in two seconds, when a texture is about to be made): what the cache holds is then the part of the
+   card's memory that the frame's other users leave, rather than a guess, and the driver does not page
+   textures through AGP. It is never made larger again. */
+static void texture_cache_guard(void)
+{
+    static uint64_t next;
+    static mach_timebase_info_data_t timebase;
+    uint64_t now;
+    long free_mb;
+    if (!mac_gpu_info_texture_cache_auto || !mac_gpu_info_free_vram_mb || !mac_gpu_info_texture_cache_auto()) return;
+    if (!timebase.denom) mach_timebase_info(&timebase);
+    now = mach_absolute_time();
+    if (next && now < next) return;
+    next = now + (uint64_t)2000000000ULL * timebase.denom / timebase.numer;
+    free_mb = mac_gpu_info_free_vram_mb();
+    if (free_mb >= 0 && free_mb < 2 && retail_texture_cache_bytes_limit > 8U * 1024U * 1024U) {
+        retail_texture_cache_bytes_limit -= 2U * 1024U * 1024U;
+        fprintf(stderr, "mac settings: video memory free %ld MB; texture cache now %lu MB\n", free_mb,
+            (unsigned long)(retail_texture_cache_bytes_limit / (1024U * 1024U)));
+    }
+}
 static GLuint xbox_texture_get(const void *resource, unsigned char sampler, unsigned stage,
     GLenum *target_out, unsigned *levels_out, float scale_out[4], struct xbox_texture_entry **entry_out,
     const char **error)
@@ -1812,6 +1838,7 @@ static GLuint xbox_texture_get(const void *resource, unsigned char sampler, unsi
     gl_bytes *= faces; native_bytes *= faces;
     }
     /* room: the least recently used go, but never one this draw has bound */
+    texture_cache_guard();
     while (xbox_texture_bytes + gl_bytes > retail_texture_cache_bytes_limit) {
         struct xbox_texture_entry *victim = NULL;
         unsigned i;

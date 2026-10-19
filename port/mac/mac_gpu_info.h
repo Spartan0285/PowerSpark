@@ -40,6 +40,10 @@ unsigned long mac_gpu_info_serial(void);
    setting is not available */
 long mac_gpu_info_texture_cache_mb(void);
 int mac_gpu_info_texture_skip_levels(void);
+/* the video memory the system says is free, in megabytes (-1: it does not say), and whether the cache's
+   size is the auto one of a card of 32 MB or less */
+long mac_gpu_info_free_vram_mb(void);
+int mac_gpu_info_texture_cache_auto(void);
 /* mac.texture_native_depth, auto resolved: 0, 1 or 2 */
 int mac_gpu_info_texture_native_depth(void);
 

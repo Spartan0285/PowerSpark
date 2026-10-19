@@ -12,6 +12,8 @@
 #include "mac_adaptive_detail.h"
 #include "mac_render_scale.h"
 #include <mach/mach_time.h>
+#include <IOKit/IOKitLib.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 /* port/linux/src/port_config.c, when linked */
 extern const char *config_string(const char *name) __attribute__((weak));
@@ -183,32 +185,76 @@ int mac_gpu_info_detail(struct mac_detail_preset *preset)
     return 1;
 }
 
+/* The video memory the system says is free, in megabytes (the accelerator's PerformanceStatistics
+   "vramFreeBytes", the least of the accelerators that say), or -1 */
+long mac_gpu_info_free_vram_mb(void)
+{
+    io_iterator_t iterator = 0;
+    io_object_t service;
+    long best = -1;
+    if (IOServiceGetMatchingServices(kIOMasterPortDefault, IOServiceMatching("IOAccelerator"), &iterator) != KERN_SUCCESS)
+        return -1;
+    while ((service = IOIteratorNext(iterator)) != 0) {
+        CFTypeRef statistics = IORegistryEntryCreateCFProperty(service, CFSTR("PerformanceStatistics"), kCFAllocatorDefault, 0);
+        if (statistics && CFGetTypeID(statistics) == CFDictionaryGetTypeID()) {
+            CFTypeRef free_bytes = CFDictionaryGetValue((CFDictionaryRef)statistics, CFSTR("vramFreeBytes"));
+            SInt64 bytes = 0;
+            if (free_bytes && CFGetTypeID(free_bytes) == CFNumberGetTypeID() &&
+                CFNumberGetValue((CFNumberRef)free_bytes, kCFNumberSInt64Type, &bytes) && bytes >= 0) {
+                long megabytes = (long)(bytes / 1048576);
+                if (best < 0 || megabytes < best) best = megabytes;
+            }
+        }
+        if (statistics) CFRelease(statistics);
+        IOObjectRelease(service);
+    }
+    IOObjectRelease(iterator);
+    return best;
+}
+
+static int info_cache_mb_known, info_cache_mb_auto, info_cache_mb_value;
+
 long mac_gpu_info_texture_cache_mb(void)
 {
     long megabytes = config_integer ? config_integer("mac.texture_cache_mb") : 0;
     if (megabytes >= 4 && megabytes <= 48) return megabytes;
     if (megabytes) fprintf(stderr, "mac settings: mac.texture_cache_mb must be 4 to 48; using auto\n");
-    megabytes = mac_gpu_pick_texture_cache_mb(mac_gpu_info_vram_mb(), mac_gpu_info_campaign());
-    fprintf(stderr, "mac settings: texture cache %ld MB\n", megabytes);
-    return megabytes;
+    if (!info_cache_mb_known) {
+        int picked = mac_gpu_pick_texture_cache_mb(mac_gpu_info_vram_mb(), mac_gpu_info_campaign());
+        long free_mb = mac_gpu_info_vram_mb() <= 32 ? mac_gpu_info_free_vram_mb() : -1;
+        info_cache_mb_value = mac_gpu_pick_texture_cache_from_free(picked, mac_gpu_info_vram_mb(), free_mb);
+        info_cache_mb_known = 1;
+        info_cache_mb_auto = 1;
+        fprintf(stderr, "mac settings: texture cache %d MB (the card's pick %d MB, video memory free %ld MB)\n",
+            info_cache_mb_value, picked, free_mb);
+    }
+    return info_cache_mb_value;
+}
+
+/* Whether the cache's size is the auto one (so that it may be made smaller while the card runs short) */
+int mac_gpu_info_texture_cache_auto(void)
+{
+    return info_cache_mb_known && info_cache_mb_auto && mac_gpu_info_vram_mb() <= 32;
 }
 
 int mac_gpu_info_texture_skip_levels(void)
 {
     long levels = config_integer ? config_integer("mac.texture_skip_levels") : -1;
     if (levels >= 0 && levels <= 4) return (int)levels;
-    levels = mac_gpu_pick_texture_skip_levels(mac_gpu_info_vram_mb(), info_map);
+    levels = mac_gpu_pick_texture_skip_levels_for(mac_gpu_info_vram_mb(), info_map,
+        (int)(mac_gpu_info_vram_mb() <= 32 ? mac_gpu_info_texture_cache_mb() : 0));
     if (levels) fprintf(stderr, "mac settings: texture levels skipped: %ld\n", levels);
     return (int)levels;
 }
 
 /* mac.texture_native_depth: 0 as before (every texture four bytes a texel), 1 the 8-bit formats and grey palettes
-   at their own depth (picture identical), 2 the 16-bit formats too; -1 picks 1 */
+   at their own depth (picture identical), 2 the 16-bit formats too; -1 picks 2 on a card of 32 MB or less (as
+   MacSoft's Halo holds them) and else 1 */
 int mac_gpu_info_texture_native_depth(void)
 {
     long mode = config_integer ? config_integer("mac.texture_native_depth") : -1;
     if (mode >= 0 && mode <= 2) return (int)mode;
-    return 1;
+    return mac_gpu_pick_texture_native_depth(mac_gpu_info_vram_mb());
 }
 
 /* ---------- mac.adaptive_detail */

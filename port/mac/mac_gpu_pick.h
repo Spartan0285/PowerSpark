@@ -56,10 +56,38 @@ static __inline__ int mac_gpu_pick_texture_cache_mb(int vram_mb, int campaign)
     return campaign ? 48 : 32;
 }
 
-/* The largest bitmap levels left out for mac.texture_skip_levels -1 */
+/* The largest bitmap levels left out for mac.texture_skip_levels -1: one on a card of 32 MB or less
+   for the maps that do not fit its cache at full size, and for any map when the cache is short of the
+   room an ordinary map wants (cache_mb under 12; 0: not known) */
+static __inline__ int mac_gpu_pick_texture_skip_levels_for(int vram_mb, const char *map, int cache_mb)
+{
+    if (vram_mb > 32) return 0;
+    return mac_gpu_map_is_heavy(map) || (cache_mb > 0 && cache_mb < 12) ? 1 : 0;
+}
 static __inline__ int mac_gpu_pick_texture_skip_levels(int vram_mb, const char *map)
 {
-    return vram_mb <= 32 && mac_gpu_map_is_heavy(map) ? 1 : 0;
+    return mac_gpu_pick_texture_skip_levels_for(vram_mb, map, 0);
+}
+
+/* The texture cache of a card of 32 MB or less, from the video memory the system says is free when the
+   textures begin (free_mb, negative: not known): what is free less 10 MB for what is made later (the
+   frame's render targets, the world's vertex buffers, the menus' pictures), at least 8 MB and not more
+   than the card's pick. */
+static __inline__ int mac_gpu_pick_texture_cache_from_free(int picked_mb, int vram_mb, long free_mb)
+{
+    long budget;
+    if (vram_mb > 32 || free_mb < 0) return picked_mb;
+    budget = free_mb - 10;
+    if (budget < 8) budget = 8;
+    return budget < picked_mb ? (int)budget : picked_mb;
+}
+
+/* How the Xbox maps' uncompressed textures are held (mac.texture_native_depth -1): the 16-bit formats at
+   two bytes on a card of 32 MB or less, as MacSoft's Halo holds them (GL_RGB5, GL_RGB5_A1, GL_RGBA4),
+   else only the 8-bit formats (the picture the same) */
+static __inline__ int mac_gpu_pick_texture_native_depth(int vram_mb)
+{
+    return vram_mb <= 32 ? 2 : 1;
 }
 
 /* The video memory of a card by the name its driver gives (the answer when
