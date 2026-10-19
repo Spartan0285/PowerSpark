@@ -20,6 +20,24 @@
 #include "controller_setup_ui.h"
 #include "../bt/bt_selftest.h"
 
+/* port: the button presets' table, shared with the game (the legend below is drawn from it) */
+#ifndef BYTE_DEFINED
+#define BYTE_DEFINED
+typedef unsigned char byte;
+#endif
+#include "../../linux/game/gamepad_layouts.h"
+
+/* the presets' names, as the launcher's popup has them, in gamepad_layouts' order */
+static const char *const kLayoutNames[NUMBER_OF_GAMEPAD_LAYOUTS] =
+	{ "Halo CE (default)", "Halo 2", "Halo 3", "Halo 4", "Halo 5", "Halo Infinite" };
+/* the controls of gamepad_layout.buttons, in its order (the two unchanged ones, start and back, have no entry) */
+static const char *const kControlNames[12] =
+	{ "Jump", "Grenade swap", "Action", "Weapon swap", "Melee", "Flashlight", "Throw grenade", "Fire", 0, 0, "Crouch", "Zoom" };
+/* input.h's gamepad buttons, in its order */
+static const char *const kButtonNames[16] =
+	{ "A", "B", "X", "Y", "Right bumper", "Left bumper", "Left trigger", "Right trigger",
+	  "D-pad up", "D-pad down", "D-pad left", "D-pad right", "Start", "Back", "Left stick", "Right stick" };
+
 static NSString *gConfigPath = nil;
 static BOOL gHoldTest = NO; /* --hold-test: the single-instance checks, with no window */
 
@@ -202,6 +220,8 @@ static int DeviceNumber(IOHIDDeviceRef device, CFStringRef key)
 	NSTextField *leftLabel, *rightLabel;
 	NSSlider *leftSlider, *rightSlider;
 	NSButton *invertBox, *saveButton, *skipButton;
+	NSPopUpButton *layoutPopup;
+	NSTextField *legend[3]; /* the legend's three columns */
 	IOHIDManagerRef manager;
 	NSMutableArray *devices; /* NSValue of IOHIDDeviceRef */
 	NSMutableDictionary *reportBuffers; /* NSValue of IOHIDDeviceRef -> NSMutableData */
@@ -217,6 +237,7 @@ static int DeviceNumber(IOHIDDeviceRef device, CFStringRef key)
 - (void)start;
 - (void)dumpText;
 - (void)sliderChanged:(id)sender;
+- (void)layoutChanged:(id)sender;
 - (void)refresh:(id)sender;
 - (void)readInitialValues;
 - (void)handleValue:(IOHIDValueRef)value;
@@ -426,7 +447,8 @@ static CFMutableDictionaryRef MatchPage(int page, int usage)
 	float headH = ThemeSize(kHeading, kThemeEmphasizedSystemFont, inner - 6, YES).height + 4;
 	float statusH = [self statusHeight];
 	float boxH = headH + instrH + 12 + 8;
-	float statusY = 286, boxY = statusY + statusH + 6;
+	const float sh = 62; /* the button layout's legend, below the invert box row (which also has its popup) */
+	float statusY = 286 + sh, boxY = statusY + statusH + 6;
 	float height = boxY + boxH + 10;
 	float btHeight = CSBluetoothContentHeight();
 	float contentH = height > btHeight ? height : btHeight;
@@ -479,20 +501,34 @@ static CFMutableDictionaryRef MatchPage(int page, int usage)
 	instructions = [self labelIn:[box contentView] frame:NSMakeRect(2, boxH - 12 - headH - 4 - instrH, inner, instrH) text:kInstructions bold:NO];
 	status = [self labelAt:NSMakeRect(margin, statusY, 500, statusH) text:kStatusNoPad bold:NO];
 
-	padView = [[[PadView alloc] initWithFrame:NSMakeRect(10, 122, 500, 160)] autorelease];
+	padView = [[[PadView alloc] initWithFrame:NSMakeRect(10, 122 + sh, 500, 160)] autorelease];
 	padView->leftDeadZone = padView->rightDeadZone = 9000;
 	[padGroup addSubview:padView];
 
-	[self labelAt:NSMakeRect(10, 94, 150, 18) text:@"Left stick dead zone" bold:NO];
-	leftSlider = [self sliderAt:NSMakeRect(160, 94, 280, 20)];
-	leftLabel = [self labelAt:NSMakeRect(450, 94, 60, 18) text:@"9000" bold:NO];
-	[self labelAt:NSMakeRect(10, 70, 150, 18) text:@"Right stick dead zone" bold:NO];
-	rightSlider = [self sliderAt:NSMakeRect(160, 70, 280, 20)];
-	rightLabel = [self labelAt:NSMakeRect(450, 70, 60, 18) text:@"9000" bold:NO];
-	invertBox = [[[NSButton alloc] initWithFrame:NSMakeRect(10, 44, 300, 18)] autorelease];
+	[self labelAt:NSMakeRect(10, 94 + sh, 150, 18) text:@"Left stick dead zone" bold:NO];
+	leftSlider = [self sliderAt:NSMakeRect(160, 94 + sh, 280, 20)];
+	leftLabel = [self labelAt:NSMakeRect(450, 94 + sh, 60, 18) text:@"9000" bold:NO];
+	[self labelAt:NSMakeRect(10, 70 + sh, 150, 18) text:@"Right stick dead zone" bold:NO];
+	rightSlider = [self sliderAt:NSMakeRect(160, 70 + sh, 280, 20)];
+	rightLabel = [self labelAt:NSMakeRect(450, 70 + sh, 60, 18) text:@"9000" bold:NO];
+	invertBox = [[[NSButton alloc] initWithFrame:NSMakeRect(10, 44 + sh, 240, 18)] autorelease];
 	[invertBox setButtonType:NSSwitchButton];
 	[invertBox setTitle:@"Invert look (right stick Y)"];
 	[padGroup addSubview:invertBox];
+
+	/* the button layout: a popup (the launcher's choices) and what the chosen preset puts on each button */
+	{
+		int i;
+		[self labelAt:NSMakeRect(260, 44 + sh, 90, 18) text:@"Button layout" bold:NO];
+		layoutPopup = [[[NSPopUpButton alloc] initWithFrame:NSMakeRect(352, 44 + sh - 3, 158, 24) pullsDown:NO] autorelease];
+		for (i = 0; i < NUMBER_OF_GAMEPAD_LAYOUTS; i++)
+			[layoutPopup addItemWithTitle:[NSString stringWithUTF8String:kLayoutNames[i]]];
+		[layoutPopup setTarget:self];
+		[layoutPopup setAction:@selector(layoutChanged:)];
+		[padGroup addSubview:layoutPopup];
+		for (i = 0; i < 3; i++)
+			legend[i] = [self labelAt:NSMakeRect(10 + 168 * i, 44, 166, 56) text:@"" bold:NO];
+	}
 
 	skipButton = [self buttonAt:NSMakeRect(10, 6, 90, 32) title:@"Skip" action:@selector(skip:)];
 	saveButton = [self buttonAt:NSMakeRect(410, 6, 100, 32) title:@"Save" action:@selector(save:)];
@@ -508,8 +544,15 @@ static CFMutableDictionaryRef MatchPage(int page, int usage)
 			[rightSlider setIntValue:cs_config_clamp_dead_zone(atoi(v))];
 		if (cs_config_get(p, "input.gamepad_invert_look", v, sizeof v) == 1)
 			[invertBox setState:strcmp(v, "true") == 0 ? NSOnState : NSOffState];
+		if (cs_config_get(p, "input.gamepad_layout", v, sizeof v) == 1) {
+			int i;
+			for (i = 0; i < NUMBER_OF_GAMEPAD_LAYOUTS; i++)
+				if (strcmp(v, gamepad_layouts[i].name) == 0)
+					[layoutPopup selectItemAtIndex:i];
+		}
 	}
 	[self sliderChanged:nil];
+	[self layoutChanged:nil];
 }
 
 /* --dump-text: every text and control with its size and the size its text needs (GetThemeTextDimensions, as
@@ -886,6 +929,35 @@ NSSize CSThemeSize(NSString *text, ThemeFontID font, float width, BOOL wrap)
 	[padView setNeedsDisplay:YES];
 }
 
+/* The legend: for the chosen preset, each control and its button (the table's), in three columns of four. */
+- (void)layoutChanged:(id)sender
+{
+	int n = [layoutPopup indexOfSelectedItem], i, entries = 0;
+	NSMutableString *col[3];
+	const struct gamepad_layout *l;
+
+	for (i = 0; i < 3; i++)
+		col[i] = [NSMutableString string];
+	if (n < 0 || n >= NUMBER_OF_GAMEPAD_LAYOUTS)
+		n = 0;
+	l = &gamepad_layouts[n];
+	if (n == _gamepad_layout_profile) {
+		[legend[0] setStringValue:@"Keeps the buttons of the game's own layout (Halo CE's; the same as Halo 2's)."];
+		[legend[1] setStringValue:@""];
+		[legend[2] setStringValue:@""];
+		return;
+	}
+	for (i = 0; i < 12; i++) {
+		if (!kControlNames[i])
+			continue;
+		[col[entries / 4] appendFormat:@"%s: %s\n", kControlNames[i], l->buttons[i] < 16 ? kButtonNames[l->buttons[i]] : "none"];
+		entries++;
+	}
+	[col[entries / 4] appendFormat:@"Sprint: %s", l->sprint < 16 ? kButtonNames[l->sprint] : "none"];
+	for (i = 0; i < 3; i++)
+		[legend[i] setStringValue:col[i]];
+}
+
 - (void)finish:(BOOL)skipOnly
 {
 	int rc;
@@ -898,6 +970,18 @@ NSSize CSThemeSize(NSString *text, ThemeFontID font, float width, BOOL wrap)
 	else
 		rc = cs_config_save_calibration([gConfigPath fileSystemRepresentation],
 			[leftSlider intValue], [rightSlider intValue], [invertBox state] == NSOnState);
+	if (rc == 0 && !skipOnly) {
+		/* port: input.gamepad_layout, a TOML string */
+		const char *keys[1], *values[1];
+		char value[40];
+		int n = [layoutPopup indexOfSelectedItem];
+		if (n < 0 || n >= NUMBER_OF_GAMEPAD_LAYOUTS)
+			n = 0;
+		snprintf(value, sizeof value, "\"%s\"", gamepad_layouts[n].name);
+		keys[0] = "input.gamepad_layout";
+		values[0] = value;
+		rc = cs_config_set([gConfigPath fileSystemRepresentation], keys, values, 1);
+	}
 	if (rc != 0) {
 		NSRunAlertPanel(@"Could not write the config file", @"%@", @"OK", nil, nil, gConfigPath);
 		return;
