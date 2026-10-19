@@ -397,7 +397,6 @@ int mac_adaptive_detail_resolution_capped(void)
     return adaptive_on && adaptive.level > MAC_ADAPT_RESOLUTION && adaptive_resolution_available();
 }
 
-/* seconds: the time since the previous frame; wait_seconds: how much of it a frame rate limiter waited */
 /* ---------- the swap's wait (mac_window.c), for the summary */
 static double swap_wait_total;
 static unsigned long swap_wait_frames;
@@ -461,7 +460,6 @@ static void swap_interval_update(void)
     if (want != current && mac_window_set_swap_interval(want))
         fprintf(stderr, "swap interval: %d (%s)\n", want, setting >= 1 ? "mac.swap_interval" : "30 frames a second on a 60 Hz panel");
 }
-
 
 /* seconds: the time since the previous frame; wait_seconds: how much of it was a wait that is not the
    frame's work: a frame rate limiter's and, with vsync, the swap's wait for the display (mac_window.c) */
