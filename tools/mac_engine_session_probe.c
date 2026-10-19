@@ -815,7 +815,10 @@ static int run_map_lifecycle(const char *scenario_name,unsigned cycle)
 #endif
             /* port: the gametype that ran and its goal objects */
             if(probe_menu_mode&&game_engine)mac_engine_game_variant_report();
-            CHECK(game_in_progress());
+            /* port: a network game that ended (the pause menu's leave, a game that was over, a host that went down) is no
+               longer in progress when the menus ask for the title (engine_network_test.c); this counted as a failure, and a
+               failure ends the process rather than reopening the title's session */
+            CHECK(game_in_progress()||(probe_menu_mode&&probe_request==MAC_MENU_REQUEST_MENU));
             fprintf(stderr,"stage: game_dispose_from_old_map\n");
             game_dispose_from_old_map();
         }
