@@ -79,10 +79,10 @@ SCREENS = {
             # (a pair of each, for Widescreen On and Off: the 4:3 modes and the wide ones, which
             # menu_tags.c fills from the display and menu_functions.c shows by the Widescreen row)
             ("RESOLUTION:", "display.resolution", [("NATIVE", "native")],
-             "The display's mode when fullscreen takes it (from\nthe next start); Native keeps the desktop's.", "mac",
+             "The display's mode when fullscreen takes it (from the\nnext start). Native: the desktop's. A lower one is softer.", "mac",
              "resolution_mac"),
             ("RESOLUTION:", "display.resolution", [("NATIVE", "native")],
-             "The display's mode when fullscreen takes it (from\nthe next start); Native keeps the desktop's.", "mac",
+             "The display's mode when fullscreen takes it (from the\nnext start). Native: the desktop's. A lower one is softer.", "mac",
              "resolution_mac_wide"),
             ("WINDOW SIZE:", "display.window_size", [("640 x 480", "640x480")],
              "The window's size: the game's picture is scaled to\nit (its edges can also be dragged).", "mac",
@@ -97,7 +97,7 @@ SCREENS = {
             # Xbox's 640x480 with bars; the setting the desktop's Resolution
             # Scaling is, port/mac/mac_window.c)
             ("WIDESCREEN:", "display.resolution_scaling", [("ON", "native"), ("OFF", "original")],
-             "On: a wider view for a wider window, with the wide\nmodes listed. Off: the 4:3 picture, and 4:3 modes.", "mac",
+             "On: a wider view for a wider window or display.\nOff: the 4:3 picture, with bars.", "mac",
              "widescreen_mac"),
             ("V-SYNC:", "display.vsync", ON_OFF,
              "Wait for the display between frames, so that the\npicture never tears.", None),

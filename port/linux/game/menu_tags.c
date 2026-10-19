@@ -816,9 +816,12 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		added = platform_window_sizes(widths, heights, MAXIMUM_STRINGS);
 	else
 		return count;
-	/* the Mac's pairs of rows, for Widescreen On and Off: the wide modes (wider than 3:2) or
-	the 4:3 ones (tools/port_settings.py; menu_functions.c shows the pair that is used) */
-	if (added > 0 && widget->name && (strstr(widget->name, "_mac_wide_") || strstr(widget->name, "_mac_spinner")))
+	/* the Mac's pairs of rows, for Widescreen On and Off: the window sizes of the wide shape (wider
+	than 3:2) or the 4:3 ones (tools/port_settings.py; menu_functions.c shows the pair that is used).
+	port: the display's modes are all offered with either, as the launcher's list is: a 4:3 display
+	(an iBook's 1024x768) with Widescreen On, the default, was left with Native alone */
+	if (added > 0 && widget->name && widget->setting && !strcmp(widget->setting, "display.window_size") &&
+		(strstr(widget->name, "_mac_wide_") || strstr(widget->name, "_mac_spinner")))
 	{
 		boolean wide = strstr(widget->name, "_mac_wide_") != NULL;
 		long kept = 0;

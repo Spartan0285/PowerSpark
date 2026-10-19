@@ -107,8 +107,8 @@ static const struct config_setting config_settings[] =
 		"\"<width>x<height>\" (\"1920x1080\"), 640x480 or more. Fullscreen sets the\n"
 		"display to it; borderless draws it scaled to the display. Mac: the\n"
 		"display's mode when fullscreen takes it, at the next start (Video Setup\n"
-		"lists the display's own modes: the wide ones with Widescreen On, the 4:3\n"
-		"ones with it Off); the picture is drawn with its pixels (mac.render_resolution)." },
+		"lists all the display's own modes; a lower one is softer, the game draws\n"
+		"480 lines); the picture is drawn with its pixels (mac.render_resolution)." },
 	{ "display.resolution_scaling", _config_string, "\"native\"", "HALO_RESOLUTION_SCALING", _environment_value,
 		_platform_desktop,
 		"\"native\" draws at the window's resolution (fullscreen, the display's or\n"
