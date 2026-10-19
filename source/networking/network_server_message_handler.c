@@ -262,6 +262,7 @@ symbols in this file:
 #include "networking/network_server_manager_internal.h"
 #include "networking/network_server_message_handler.h"
 #include "text/unicode.h"
+#include "halo_endian.h" /* port: port/linux/include/halo_endian.h */
 /* system_milliseconds(), for the settings update interval */
 #include "cseries/cseries_windows.h"
 
@@ -776,6 +777,27 @@ boolean network_game_server_send_message_to_client_machine(
 	return network_game_server_write(connection, buffer, size, NULL, 1);
 }
 
+/* port: the settings record goes on the wire as the raw bytes of its structure, little-endian: a big-endian host
+sends a swapped copy (network_game_wire_swap) */
+static void const *network_game_settings_wire_copy(
+	void const *game,
+	long game_size)
+{
+#ifdef HALO_BIG_ENDIAN_HOST
+	static struct network_game wire_copy;
+
+	if (game_size == sizeof(wire_copy))
+	{
+		csmemcpy(&wire_copy, game, sizeof(wire_copy));
+		network_game_wire_swap(&wire_copy, FALSE);
+		return &wire_copy;
+	}
+#else
+	(void)game_size;
+#endif
+	return game;
+}
+
 boolean network_game_server_send_game_settings_to_client_machine(
 	struct network_game_server *server,
 	struct network_game_server_client_machine *machine,
@@ -785,6 +807,7 @@ boolean network_game_server_send_game_settings_to_client_machine(
 	struct message_server_game_settings_update message;
 	long offset;
 
+	game = network_game_settings_wire_copy(game, game_size);
 	for (offset = 0; offset < game_size; offset += sizeof(message.data))
 	{
 		void *encoded_message;
@@ -1068,6 +1091,7 @@ boolean network_game_server_send_game_settings_to_all_machines(
 		0x1C8,
 		server);
 
+	game = network_game_settings_wire_copy(game, game_size);
 	/* every piece goes out even if one fails for a machine: the others
 	would otherwise keep the old settings (a machine whose connection failed
 	is closed, and is skipped when the update is sent again) */
@@ -1776,6 +1800,8 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			}
 
 			network_game_generate_join_game_token(advertisement.join_game_token);
+			/* port: sent as the raw bytes of the structure, little-endian */
+			network_game_advertisement_wire_swap(&advertisement);
 			reply = create_network_game_message(
 				_message_server_game_advertise,
 				&advertisement,

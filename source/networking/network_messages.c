@@ -181,6 +181,7 @@ symbols in this file:
 #include "bungie_net/common/message_header.h"
 #include "memory/data_packet_groups.h"
 #include "networking/network_messages.h"
+#include "halo_endian.h" /* port: port/linux/include/halo_endian.h */
 
 /* cseries_windows.c's */
 unsigned long system_milliseconds(void);
@@ -654,6 +655,21 @@ void network_event(
 	error(3, "%s", temporary);
 
 	return;
+}
+
+/* port: the game advertisement goes on the wire as the raw bytes of its structure (one raw field of 276 bytes), which
+every host has sent in its own order: little-endian, on all the builds there are. A big-endian host (the Mac's
+PowerPC) swaps the fields of it to and from that order, or it reads its open flag from the wrong end (a G4 found the
+Intel host's game "not open"). The layout is that of message_server_game_advertise (the handlers' structures):
+nonces, key id, key and XNADDR (bytes: its address is in network order), port, version, platform and the game's name
+(16 wide characters), 0x1A reserved, the map's version and name, and six shorts, then the join token. */
+#define GAME_ADVERTISE_LAYOUT(X) X(b,52) X(s,19) X(b,26) X(l,1) X(b,128) X(s,6) X(b,16)
+typedef char game_advertise_layout_assert[HALO_WIRE_SIZE(GAME_ADVERTISE_LAYOUT) == 276 ? 1 : -1];
+
+void network_game_advertisement_wire_swap(
+	void *advertisement)
+{
+	halo_wire_swap_le(advertisement, GAME_ADVERTISE_LAYOUT(HALO_WIRE_STRING), 1);
 }
 
 static boolean encode_network_game_message(

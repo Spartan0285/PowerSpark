@@ -93,6 +93,7 @@ symbols in this file:
 #include "objects/objects.h"
 #include "units/units.h"
 #include "text/unicode.h"
+#include "halo_endian.h" /* port: port/linux/include/halo_endian.h */
 
 #include <xtl.h>
 
@@ -843,3 +844,67 @@ boolean network_game_create_game_objects(
 }
 
 /* ---------- private code */
+
+/* port: the game's settings go over the wire as the raw bytes of the structure (network_server_message_handler.c sends
+it in pieces), in the order of the host that sent them: little-endian, on all the builds there are. A big-endian host
+(the Mac's PowerPC) swaps the fields of the structure to and from that order, in place, on a copy it sends or the
+record it has assembled. The variant's engine-specific part is a union, whose members are the same size or smaller
+than the largest (the oddball's): every member is 4 byte values but the booleans, which are bytes. */
+void network_game_wire_swap(
+	struct network_game *game,
+	boolean to_host)
+{
+#ifdef HALO_BIG_ENDIAN_HOST
+	byte *bytes = (byte *)game;
+	long engine_offset = offsetof(struct network_game, variant) + offsetof(struct game_variant, game_engine_index);
+	long union_offset = offsetof(struct network_game, variant) + offsetof(struct game_variant, game_engine_variant);
+	long engine_index = 0;
+	long index;
+
+	halo_wire_swap_always(bytes + offsetof(struct network_game, name), "16s", 1);
+	halo_wire_swap_always(bytes + offsetof(struct network_game, map) + offsetof(struct network_game_map, version), "1l", 1);
+	halo_wire_swap_always(bytes + offsetof(struct network_game, variant) +
+		offsetof(struct game_variant, human_readable_game_description), "12s", 1);
+	/* (the engine decides the union's layout: read it as the host's, from before or after its own swap) */
+	if (!to_host)
+		engine_index = game->variant.game_engine_index;
+	halo_wire_swap_always(bytes + engine_offset, "1l", 1);
+	if (to_host)
+		engine_index = game->variant.game_engine_index;
+	/* universal variant: teams and 3 bytes, flags, goal radar, odd man out and 3 bytes, and 8 longs */
+	halo_wire_swap_always(bytes + offsetof(struct network_game, variant) + offsetof(struct game_variant, universal_variant),
+		"4b2l4b8l", 1);
+	switch (engine_index)
+	{
+	case game_engine_ctf:
+		/* four booleans, then the single flag time */
+		halo_wire_swap_always(bytes + union_offset + 4, "1l", 1);
+		break;
+	case game_engine_oddball:
+		/* two booleans and two bytes of padding, then five longs */
+		halo_wire_swap_always(bytes + union_offset + 4, "5l", 1);
+		break;
+	case game_engine_race:
+		halo_wire_swap_always(bytes + union_offset, "2l", 1);
+		break;
+	default:
+		/* slayer's and king's are booleans alone */
+		break;
+	}
+	halo_wire_swap_always(bytes + offsetof(struct network_game, variant) + offsetof(struct game_variant, flags), "1s", 1);
+	halo_wire_swap_always(bytes + offsetof(struct network_game, difficulty), "2s", 1);
+	for (index = 0; index < HALO_PORT_MAXIMUM_NETWORK_MACHINES; index++)
+		halo_wire_swap_always(bytes + offsetof(struct network_game, machines) + index * sizeof(struct network_machine),
+			"32s", 1);
+	halo_wire_swap_always(bytes + offsetof(struct network_game, player_count), "1s", 1);
+	for (index = 0; index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS; index++)
+		halo_wire_swap_always(bytes + offsetof(struct network_game, players) + index * sizeof(struct network_player),
+			"14s", 1);
+	halo_wire_swap_always(bytes + offsetof(struct network_game, __unknown426), "1s", 1);
+	halo_wire_swap_always(bytes + offsetof(struct network_game, random_seed), "2l", 1);
+	halo_wire_swap_always(bytes + offsetof(struct network_game, variant_options), "4s", 1);
+#else
+	(void)game;
+	(void)to_host;
+#endif
+}

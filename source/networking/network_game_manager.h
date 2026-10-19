@@ -83,6 +83,11 @@ struct network_game
 
 /* ---------- prototypes/EXAMPLE.C */
 
+/* port: the settings record between the host's byte order and the wire's (little-endian), in place; nothing on a
+little-endian host */
+void network_game_wire_swap(
+	struct network_game *game,
+	boolean to_host);
 void network_game_invalidate_player(
 	struct network_player *player);
 void network_game_end_and_load_ui(

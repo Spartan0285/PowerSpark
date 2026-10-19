@@ -66,6 +66,12 @@ enum network_game_message_type
 
 /* ---------- public code */
 
+/* port: a game advertisement's structure between the host's byte order and the wire's (little-endian), in place; nothing
+on a little-endian host */
+void network_game_advertisement_wire_swap(
+	void *advertisement);
+
+
 void initialize_network_game_packets(
 	void);
 

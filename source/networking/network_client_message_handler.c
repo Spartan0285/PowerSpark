@@ -794,6 +794,8 @@ static boolean network_game_client_handle_message_server_game_advertise(
 		{
 			if (transport_is_nonce(&advertisement, TRANSPORT_NONCE_LENGTH))
 			{
+				/* port: the structure came as the host's raw bytes, little-endian */
+				network_game_advertisement_wire_swap(&advertisement);
 				network_game_client_new_advertised_game(client, &advertisement);
 			}
 		}
@@ -985,6 +987,8 @@ static boolean network_game_client_receive_game_settings_piece(
 			if (network_game_client_settings_staging_size == piece->total_size)
 			{
 				network_game_client_settings_staging_size = 0;
+				/* port: the record came as the host's raw bytes, little-endian */
+				network_game_wire_swap(&network_game_client_settings_staging, TRUE);
 				result = network_game_client_game_settings_updated(client, &network_game_client_settings_staging);
 				if (!result)
 				{
