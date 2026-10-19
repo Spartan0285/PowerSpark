@@ -1344,6 +1344,11 @@ static int mac_interactive_frame(void *opaque,
     }
     if (elapsed > MAC_INTERACTIVE_MAX_ELAPSED)
         elapsed = MAC_INTERACTIVE_MAX_ELAPSED;
+    /* port: with a swap interval of two refreshes (mac.swap_interval, 30 frames a second) a frame of 31 to 36 ms is one
+       tick: the clock is in whole milliseconds, so frames of 33, 33 and 34 ms would add 33.3 ms of simulation time to
+       the accumulator that comes up a hair short of a tick, and a frame would show no new tick and the next two. */
+    if (!context->fixed_step && mac_window_swap_interval() == 2 && elapsed > 0.031 && elapsed < 0.036)
+        elapsed = MAC_INTERACTIVE_TICK;
     if (context->fixed_step)
         context->accumulator = MAC_INTERACTIVE_TICK;
     else
