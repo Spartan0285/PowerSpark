@@ -565,6 +565,12 @@ static const struct config_setting config_settings[] =
 		"their lower detail levels, fog, smaller particles, and last the frame's\n"
 		"resolution (480 lines). The log gives each change and, at the end of a\n"
 		"run, a summary (\"adaptive detail\")." },
+	{ "mac.swap_interval", _config_integer, "0", "HALO_MAC_SWAP_INTERVAL", _environment_value,
+		_platform_mac,
+		"With display.vsync on, how many refreshes of the display a frame lasts:\n"
+		"1 to 4. 0 picks: 2 (30 frames a second on a 60 Hz display, as MacSoft's\n"
+		"Halo does) on a PowerPC Mac with 32 MB of video memory or less while\n"
+		"the frames keep that time, else 1. With vsync off it has no effect." },
 	{ "mac.loading_indicator", _config_boolean, "true", "HALO_MAC_LOADING_INDICATOR", _environment_value,
 		_platform_mac,
 		"Draw a \"LOADING\" label (in Overpass), a ring of turning dots and a thin\n"

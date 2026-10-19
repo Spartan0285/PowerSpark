@@ -371,6 +371,51 @@ void mac_adaptive_detail_note_swap_wait(double seconds)
     if (seconds > 0.0) { swap_wait_total += seconds; ++swap_wait_frames; }
 }
 
+/* ---------- the swap interval
+   With vsync on, a frame's time is a whole number of refreshes whatever its work was: 33.3 ms
+   or 50 ms on a 60 Hz panel. On a PowerPC Mac with 32 MB of video memory the target is 30 frames a
+   second, so a swap interval of 2 (every second refresh) makes every frame 33.3 ms exactly, the
+   cadence of MacSoft's Halo (its frame mode "30 FPS", the default) and the game's own tick, while the
+   work fits; when it does not (the average over the target), an interval of 1 loses less (50 ms
+   rather than 67) until the work fits again. mac.swap_interval: 0 auto, 1 or 2 fixed. */
+static unsigned swap_over_run, swap_under_run;
+static int swap_auto_interval;     /* what the auto rule wants now: 0 undecided, 1 or 2 */
+
+static int swap_interval_auto_allowed(void)
+{
+    int refresh;
+    if (!adaptive_on || adaptive_fps != 30.0 || !mac_gpu_info_is_ppc() || mac_gpu_info_vram_mb() > 32) return 0;
+    refresh = mac_window_display_refresh ? mac_window_display_refresh() : 0;
+    /* (a laptop panel does not say: 60) */
+    return refresh == 0 || (refresh >= 58 && refresh <= 62);
+}
+
+static void swap_interval_update(void)
+{
+    long setting = config_integer ? config_integer("mac.swap_interval") : 0;
+    int current, want;
+    if (!mac_window_swap_interval || !mac_window_set_swap_interval) return;
+    current = mac_window_swap_interval();
+    if (current <= 0) return;                  /* vsync is off: no interval to choose */
+    if (setting >= 1 && setting <= 4) {
+        want = (int)setting;
+    } else if (swap_interval_auto_allowed()) {
+        if (!swap_auto_interval) swap_auto_interval = 2;
+        if (adaptive.frames_in_map >= MAC_GOV_WARMUP_FRAMES) {
+            if (adaptive.average_ms > adaptive.budget_ms * 1.02) { ++swap_over_run; swap_under_run = 0; }
+            else if (adaptive.average_ms < adaptive.budget_ms * 0.93) { ++swap_under_run; swap_over_run = 0; }
+            else swap_over_run = swap_under_run = 0;
+            if (swap_auto_interval == 2 && swap_over_run >= 90) swap_auto_interval = 1;
+            else if (swap_auto_interval == 1 && swap_under_run >= 120) swap_auto_interval = 2;
+        }
+        want = swap_auto_interval;
+    } else {
+        return;
+    }
+    if (want != current && mac_window_set_swap_interval(want))
+        fprintf(stderr, "swap interval: %d (%s)\n", want, setting >= 1 ? "mac.swap_interval" : "30 frames a second on a 60 Hz panel");
+}
+
 
 /* seconds: the time since the previous frame; wait_seconds: how much of it was a wait that is not the
    frame's work: a frame rate limiter's and, with vsync, the swap's wait for the display (mac_window.c) */
@@ -381,6 +426,7 @@ void mac_adaptive_detail_note_frame(double seconds, double wait_seconds)
     int direction = 0, before;
     if (work < 0.0) work = 0.0;
     adaptive_refresh();
+    if (!mac_adaptive_detail_wall_mode()) swap_interval_update();
     if (!adaptive_on) return;
     /* with a swap interval the work is under the target by a margin, so that it does not meet a refresh
        it just misses; the rungs come back at MAC_GOV_UP_UNDER of it (the band between is the hysteresis) */
