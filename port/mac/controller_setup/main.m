@@ -191,6 +191,11 @@ static int DeviceNumber(IOHIDDeviceRef device, CFStringRef key)
 		[self drawBarAt:NSMakeRect(228, 60, 16, 80) value:pad.rt max:1023 label:@"RT"];
 	}
 	[padName ? padName : @"" drawAtPoint:NSMakePoint(370, 120) withAttributes:attrs];
+	if (padName && mac_gamepad_name_is_8bitdo([padName UTF8String])) {
+		[@"Adapter in automatic mode" drawAtPoint:NSMakePoint(370, 104) withAttributes:attrs];
+		[@"Also works in D-input mode: hold View/Create" drawAtPoint:NSMakePoint(370, 88) withAttributes:small];
+		[@"+ D-pad Left on the pad for 3 seconds." drawAtPoint:NSMakePoint(370, 76) withAttributes:small];
+	} else
 	[(isXbox == CS_LAYOUT_XBOX ? @"Xbox layout" : isXbox == CS_LAYOUT_PLAYSTATION ? (sonyModel && [sonyModel length] ? [NSString stringWithFormat:@"PlayStation layout (%@)", sonyModel] : @"PlayStation layout") : isXbox == CS_LAYOUT_NINTENDO ? @"Nintendo layout" : @"Generic pad") drawAtPoint:NSMakePoint(370, 104) withAttributes:attrs];
 
 	for (i = 0; i < 12; i++) {
@@ -705,6 +710,20 @@ NSSize CSThemeSize(NSString *text, ThemeFontID font, float width, BOOL wrap)
 		|| IOHIDDeviceConformsTo(d, CS_PAGE_GENERIC_DESKTOP, 4);
 }
 
+/* the product string ("" when it has none) */
+- (NSString *)productOf:(IOHIDDeviceRef)d
+{
+	CFTypeRef n = IOHIDDeviceGetProperty(d, CFSTR(kIOHIDProductKey));
+	return n && CFGetTypeID(n) == CFStringGetTypeID() ? (NSString *)n : @"";
+}
+
+/* the report layout to decode (an 8BitDo receiver wearing Sony's ids is read from its elements: mac_gamepad_report.h) */
+- (int)reportKindOf:(IOHIDDeviceRef)d
+{
+	return mac_gamepad_report_kind_named((unsigned)DeviceNumber(d, CFSTR(kIOHIDVendorIDKey)),
+		(unsigned)DeviceNumber(d, CFSTR(kIOHIDProductIDKey)), [[self productOf:d] UTF8String]);
+}
+
 - (int)layoutOf:(IOHIDDeviceRef)d
 {
 	if ([self isXboxPad:d])
@@ -749,8 +768,7 @@ NSSize CSThemeSize(NSString *text, ThemeFontID font, float width, BOOL wrap)
 		chosen = best;
 		reportSeen = NO;
 		asleep = NO;
-		reportKind = best ? mac_gamepad_report_kind((unsigned)DeviceNumber(best, CFSTR(kIOHIDVendorIDKey)),
-			(unsigned)DeviceNumber(best, CFSTR(kIOHIDProductIDKey))) : MAC_PAD_REPORT_NONE;
+		reportKind = best ? [self reportKindOf:best] : MAC_PAD_REPORT_NONE;
 		inputCount = 0;
 		chosenAt = CFAbsoluteTimeGetCurrent();
 		cs_pad_clear(&padView->pad, best ? [self layoutOf:best] : CS_LAYOUT_GENERIC);
@@ -807,7 +825,7 @@ NSSize CSThemeSize(NSString *text, ThemeFontID font, float width, BOOL wrap)
 	NSLog(@"controller setup: device %04x:%04x added", vendor, product);
 	[devices addObject:[NSValue valueWithPointer:device]];
 	/* a Sony pad's input reports, which carry the whole state (the game reads these, mac_gamepad_report.c) */
-	if (mac_gamepad_report_kind(vendor, product) != MAC_PAD_REPORT_NONE) {
+	if ([self reportKindOf:device] != MAC_PAD_REPORT_NONE) {
 		NSMutableData *buffer = [NSMutableData dataWithLength:256];
 		[reportBuffers setObject:buffer forKey:[NSValue valueWithPointer:device]];
 		IOHIDDeviceRegisterInputReportCallback(device, (uint8_t *)[buffer mutableBytes], 256, InputReport, self);

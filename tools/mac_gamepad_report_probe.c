@@ -51,6 +51,15 @@ int main(void)
     CHECK(mac_gamepad_report_kind(0x054c, 0x0268) == MAC_PAD_REPORT_NONE);
     CHECK(mac_gamepad_report_kind(0x045e, 0x028e) == MAC_PAD_REPORT_NONE);
     CHECK(!strcmp(mac_gamepad_report_name(MAC_PAD_REPORT_DUALSENSE), "DualSense"));
+    /* the 8BitDo receiver in automatic mode wears Sony's DualShock 4 ids: elements, and no PlayStation prompts */
+    CHECK(mac_gamepad_name_is_8bitdo("8BitDo Receiver") && !mac_gamepad_name_is_8bitdo("Wireless Controller"));
+    CHECK(!mac_gamepad_name_is_8bitdo(NULL) && !mac_gamepad_name_is_8bitdo(""));
+    CHECK(mac_gamepad_report_kind_named(0x054c, 0x05c4, "8BitDo Receiver") == MAC_PAD_REPORT_NONE);
+    CHECK(mac_gamepad_report_kind_named(0x054c, 0x05c4, "Wireless Controller") == MAC_PAD_REPORT_DUALSHOCK4);
+    CHECK(mac_gamepad_report_kind_named(0x054c, 0x0ce6, "") == MAC_PAD_REPORT_DUALSENSE);
+    CHECK(mac_gamepad_report_kind_named(0x2dc8, 0x3105, "8BitDo Receiver") == MAC_PAD_REPORT_8BITDO_DINPUT);
+    CHECK(mac_gamepad_prompts_playstation(0x054c, "Wireless Controller") && mac_gamepad_prompts_playstation(0x054c, ""));
+    CHECK(!mac_gamepad_prompts_playstation(0x054c, "8BitDo Receiver") && !mac_gamepad_prompts_playstation(0x2dc8, "8BitDo Receiver"));
 
     /* DualShock 4 idle: sticks near the middle, no hat, nothing pressed */
     ds4(r, 128, 128, 128, 128, 0x08, 0, 0, 0, 0);

@@ -13,6 +13,22 @@ int mac_gamepad_report_kind(unsigned vendor, unsigned product)
     return MAC_PAD_REPORT_NONE;
 }
 
+int mac_gamepad_name_is_8bitdo(const char *name)
+{
+    return name && strstr(name, "8BitDo") != NULL;
+}
+
+int mac_gamepad_report_kind_named(unsigned vendor, unsigned product, const char *name)
+{
+    if (vendor == MAC_PAD_SONY_VENDOR && mac_gamepad_name_is_8bitdo(name)) return MAC_PAD_REPORT_NONE;
+    return mac_gamepad_report_kind(vendor, product);
+}
+
+int mac_gamepad_prompts_playstation(unsigned vendor, const char *name)
+{
+    return vendor == MAC_PAD_SONY_VENDOR && !mac_gamepad_name_is_8bitdo(name);
+}
+
 int mac_gamepad_stream_silent(int kind, double seconds)
 {
     return kind == MAC_PAD_REPORT_8BITDO_DINPUT && seconds > MAC_PAD_STREAM_TIMEOUT_SECONDS;

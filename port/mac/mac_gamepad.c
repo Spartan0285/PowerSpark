@@ -351,7 +351,7 @@ static void device_close(struct gamepad_device *pad)
    Classic pad's), by vendor or by the name the adapter gives. */
 static int adapter_like(unsigned vendor, const char *name)
 {
-    return vendor == MAC_PAD_8BITDO_VENDOR || (name && strstr(name, "8BitDo") != NULL);
+    return vendor == MAC_PAD_8BITDO_VENDOR || mac_gamepad_name_is_8bitdo(name);
 }
 
 static void request_scan(void)
@@ -525,7 +525,7 @@ static void bluetooth_switch(struct gamepad_device *pad)
    interface will not deliver them */
 static void device_raw_start(struct gamepad_device *pad)
 {
-    pad->raw_kind = mac_gamepad_report_kind(pad->vendor, pad->product);
+    pad->raw_kind = mac_gamepad_report_kind_named(pad->vendor, pad->product, pad->name);
     if (!pad->raw_kind) return;
     if ((*pad->interface)->createAsyncEventSource(pad->interface, &pad->raw_source) != kIOReturnSuccess ||
         !pad->raw_source ||
@@ -906,8 +906,9 @@ int mac_gamepad_asleep_at(int slot)
 int mac_gamepad_is_playstation_at(int slot)
 {
     if (slot >= 0 && slot == bt_slot) return 1;   /* (a DualSense or DualShock 4) */
+    /* (not an 8BitDo receiver wearing Sony's ids: the pad paired to it is not known) */
     return slot >= 0 && slot < MAC_GAMEPAD_MAXIMUM_DEVICES && pads[slot].interface &&
-        pads[slot].vendor == SONY_VENDOR;
+        mac_gamepad_prompts_playstation(pads[slot].vendor, pads[slot].name);
 }
 
 const char *mac_gamepad_name(void)

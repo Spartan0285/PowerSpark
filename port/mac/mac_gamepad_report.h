@@ -96,6 +96,18 @@ int mac_gamepad_stream_silent(int kind, double seconds);
 
 /* the report layout of a Sony id, or MAC_PAD_REPORT_NONE */
 int mac_gamepad_report_kind(unsigned vendor, unsigned product);
+/* Whether the product string names an 8BitDo receiver ("8BitDo Receiver", whatever ids it presents). */
+int mac_gamepad_name_is_8bitdo(const char *name);
+/* The report layout to decode for a device of this name. The Wireless USB Adapter 2 in its automatic mode
+   enumerates with Sony's DualShock 4 ids (054c:05c4) and the name "8BitDo Receiver", whatever pad (an Xbox
+   One pad too) is paired to it: it is not a DualShock 4, so its reports are not trusted to be one's, and
+   MAC_PAD_REPORT_NONE is returned for it: the pad is read from its HID elements, which follow whatever
+   report descriptor the adapter gives (a DualShock 4's, for the sticks, triggers, hat and buttons).
+   Dinput mode (2dc8:3105) has its own layout and is still decoded. */
+int mac_gamepad_report_kind_named(unsigned vendor, unsigned product, const char *name);
+/* Whether a pad of these ids and name is a PlayStation pad for button prompts: Sony's ids, but not an
+   8BitDo receiver wearing them (it has no say in which pad is paired to it). */
+int mac_gamepad_prompts_playstation(unsigned vendor, const char *name);
 /* the pad's name for lists, or "" */
 const char *mac_gamepad_report_name(int kind);
 

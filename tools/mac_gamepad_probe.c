@@ -10,6 +10,8 @@
    It survives a device that detaches and attaches again with other ids (8BitDo's
    adapter does, several times, while it pairs): it is told of each attach and
    detach, logs them with the time, and reads the device that took its place.
+   Every report whose first 12 bytes changed is also printed raw (RAW lines, 32 bytes at most), the first
+   five always: send the log when a pad does not decode.
    Usage: mac_gamepad_probe [seconds] [vendor:product in hex]
    Build: see tools/mac_gamepad_probe_checks.sh */
 #include "mac_gamepad_report.h"
@@ -36,7 +38,8 @@ struct probed {
     int kind;
     unsigned long reports, undecoded;
     unsigned char buffer[256];
-    unsigned char first[24];
+    unsigned char first[24], prev[64];
+    unsigned prev_size;
     unsigned first_size;
     struct mac_gamepad_frame last;
     unsigned last_extra;
@@ -48,7 +51,8 @@ static struct probed probed[MAX_PROBED];
 static int probed_count;
 static double start_time;
 static unsigned want_vendor, want_product;
-static int filtered;
+static int filtered, log_raw = 1;
+static double since(void);
 static IONotificationPortRef note_port;
 
 static long service_long(io_service_t service, CFStringRef key)
@@ -103,6 +107,14 @@ static void on_report(void *target, IOReturn result, void *refcon, void *sender,
     }
     ++p->reports;
     p->last_time = now();
+    if (log_raw && (p->reports <= 5 || size != p->prev_size || memcmp(p->buffer, p->prev, size < 12 ? size : 12) != 0)) {
+        unsigned j;
+        printf("t=%6.2f RAW %04x:%04x #%lu len %u:", since(), p->vendor, p->product, p->reports, (unsigned)size);
+        for (j = 0; j < size && j < 32; ++j) printf(" %02x", p->buffer[j]);
+        printf("\n");
+    }
+    memcpy(p->prev, p->buffer, size < sizeof(p->prev) ? size : sizeof(p->prev));
+    p->prev_size = size;
     if (p->kind && mac_gamepad_decode_report(p->kind, p->buffer, size, &frame, &extra)) {
         if (!p->have_last || memcmp(&frame, &p->last, sizeof(frame)) != 0 || extra != p->last_extra) {
             char text[256];
