@@ -1045,11 +1045,10 @@ short get_endpoint_address(
 			{
 				network_address = socket_address.sin_addr.s_addr;
 				network_port = socket_address.sin_port;
-				address->address.long_words[0] =
-					(((network_address & 0xFF0000) | (network_address >> 16)) >> 8) |
-					(((network_address & 0xFF00) | (network_address << 16)) << 8);
+				/* port: network order to the host's (the original swapped, which a big-endian host must not) */
+				address->address.long_words[0] = halo_be32(network_address);
 				address->address_length = IPV4_ADDRESS_LENGTH;
-				address->port = (word)((network_port << 8) | (network_port >> 8));
+				address->port = halo_be16(network_port);
 			}
 			else
 			{
@@ -1062,11 +1061,10 @@ short get_endpoint_address(
 		{
 			network_address = socket_address.sin_addr.s_addr;
 			network_port = socket_address.sin_port;
-			address->address.long_words[0] =
-				(((network_address & 0xFF0000) | (network_address >> 16)) >> 8) |
-				(((network_address & 0xFF00) | (network_address << 16)) << 8);
+			/* port: as above */
+			address->address.long_words[0] = halo_be32(network_address);
 			address->address_length = IPV4_ADDRESS_LENGTH;
-			address->port = (word)((network_port << 8) | (network_port >> 8));
+			address->port = halo_be16(network_port);
 		}
 		else
 		{

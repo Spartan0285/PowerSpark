@@ -3773,11 +3773,11 @@ unsigned long distributed_real_address(
 	if ((address & 0xFFC00000) == 0x64400000)
 	{
 		/* (p2p.c's in network byte order: the first number the lowest byte) */
-		unsigned long network = (address >> 24) | ((address >> 8) & 0xFF00) | ((address << 8) & 0xFF0000) |
-			(address << 24);
+		/* (the host's order to the network's and back: a swap on a little-endian host, none on a big-endian one) */
+		unsigned long network = halo_be32(address);
 		unsigned long real = p2p_peer_endpoint_address(network);
 
-		return (real >> 24) | ((real >> 8) & 0xFF00) | ((real << 8) & 0xFF0000) | (real << 24);
+		return halo_be32(real);
 	}
 	return address;
 }
