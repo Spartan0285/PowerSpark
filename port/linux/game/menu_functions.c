@@ -41,12 +41,13 @@ menu_tags.c's pc_menu_setting).
 
 The PC version's campaign menus, on player 1's profile (the active one, else
 the one last used, else the first) and the game's saved game in it:
-- "campaign menu continue" goes on with the saved game;
+- "campaign menu continue" goes on with the saved game (so does Load Game's);
+  New Game and Load Level start the level at its start and discard the
+  profile's saved game;
 - New Game's list of levels ("initialize sp level list solo", "solo map
   list update", "solo level set map") has those the profile has reached, and
   marks those it has finished on Normal, Heroic and Legendary, as the
-  Xbox's list does; a level with the saved game in it goes on with it, at
-  its difficulty. Its first row's chooser shows MULTIPLAYER's maps
+  Xbox's list does; a level with the saved game in it is marked in progress. Its first row's chooser shows MULTIPLAYER's maps
   instead, one chosen played alone at once;
 - the difficulty menu: "difficulty item select" (a difficulty chosen) and
   "set difficulty" (its OK button: the difficulty shown) start the game;
@@ -824,18 +825,36 @@ static void campaign_levels_read(struct player_profile const *profile)
 		campaign.saved_level = NONE;
 }
 
-/* plays the map, at the difficulty (a saved game in it goes on: main.c's
-main_new_map, if its difficulty is this one) */
-static void campaign_start(char const *map_name, short difficulty, short controller)
+/* plays the map, at the difficulty; resume: the saved game goes on (main.c's
+main_new_map takes it, if its difficulty is this one), else the level starts
+at its start */
+static void campaign_start(char const *map_name, short difficulty, short controller, boolean resume)
 {
 	if (player_spawn_count < 2)
 		player_ui_set_single_player_local_player_controller(0, controller);
 	main_set_map_name(map_name);
+	/* port: main_set_map_name allows the saved game; only Continue and Load Game want it */
+	if (!resume)
+		main_disallow_persistent_storage();
 	main_set_difficulty(difficulty);
 	game_connection_set(0);
 	main_menu_switch_to_single_player();
 	player_ui_remember_player1_profile(TRUE);
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
+}
+
+/* player 1's profile's saved game removed (a new game of the campaign replaces it) */
+static void campaign_saved_game_discard(void)
+{
+	char path[256];
+
+	/* (the file game_state_save_to_persistent_storage writes and the next game reads) */
+	if (!player_ui_get_path_to_local_player_profile_directory(0, path) ||
+		strlen(path) + strlen("savegame.bin") >= sizeof(path))
+		return;
+	strcat(path, "savegame.bin");
+	if (DeleteFileA(path))
+		platform_log("menus: the saved game is discarded for a new game");
 }
 
 static boolean campaign_fail(void)
@@ -958,7 +977,7 @@ static boolean campaign_continue(short controller)
 
 	if (!campaign_profile(controller, &profile) || !ui_widget_port_saved_game(&map_name, &level, &difficulty))
 		return campaign_fail();
-	campaign_start(map_name, difficulty, controller);
+	campaign_start(map_name, difficulty, controller, TRUE);
 	return TRUE;
 }
 
@@ -1269,7 +1288,7 @@ static boolean level_choose(short controller)
 
 		if (!map_name || !campaign_profile(controller, &profile))
 			return campaign_fail();
-		campaign_start(map_name, main_get_difficulty(), controller);
+		campaign_start(map_name, main_get_difficulty(), controller, FALSE);
 		return FALSE;
 	}
 	if (level_list.kind == MAP_KIND_CUSTOM_SINGLEPLAYER)
@@ -1303,7 +1322,10 @@ static boolean difficulty_start(short difficulty, short controller)
 	/* (a campaign level, or a Custom Edition campaign map) */
 	if (!custom_edition_maps_level_campaign(map_name))
 		map_name = main_get_solo_level_name(0);
-	campaign_start(map_name, PIN(difficulty, 0, 3), controller);
+	/* port: New Game and Load Level start the level fresh, as the PC version's do, and the profile's
+	old checkpoint goes (Continue and Load Game are the ways back to one) */
+	campaign_saved_game_discard();
+	campaign_start(map_name, PIN(difficulty, 0, 3), controller, FALSE);
 	return TRUE;
 }
 
@@ -1429,7 +1451,7 @@ static boolean saved_game_continue(short controller)
 	if (!player_profile_get(saved_game->profile_index, &profile))
 		return campaign_fail();
 	player_ui_set_active_player_profile(0, saved_game->profile_index, &profile);
-	campaign_start(main_get_solo_level_name(saved_game->level), saved_game->difficulty, controller);
+	campaign_start(main_get_solo_level_name(saved_game->level), saved_game->difficulty, controller, TRUE);
 	return TRUE;
 }
 
@@ -5240,7 +5262,7 @@ static boolean mac_lobby_start(void)
 		(int)lobby_local_player_count());
 	if (!map_name || !map_name[0] || lobby_local_player_count() < 1)
 		return campaign_fail();
-	campaign_start(map_name, main_get_difficulty(), 0);
+	campaign_start(map_name, main_get_difficulty(), 0, FALSE);
 	mac_local_lobby = FALSE;
 	return FALSE;
 }
