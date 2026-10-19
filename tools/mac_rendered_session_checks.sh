@@ -614,7 +614,7 @@ for arch in ${MAC_ARCHS:-ppc i386}; do
         if [ "${MAC_RENDERED_SESSION_INCREMENTAL:-0}" != 1 ] || \
             case "$recompile" in *" $name "*) true ;; *) false ;; esac; then
             "$cc" -arch "$arch" -isysroot "$sdk" -mmacosx-version-min=10.4 \
-                -std=gnu89 -O2 $fp -Wall -Wextra -Iport/mac -c "$unit" \
+                -std=gnu89 -O2 $fp -Wall -Wextra -Iport/mac -Iport/linux/src -c "$unit" \
                 -o "$obj" > "$obj.txt" 2>&1
         elif [ ! -f "$obj" ]; then
             echo "incremental object is missing: $obj" >&2

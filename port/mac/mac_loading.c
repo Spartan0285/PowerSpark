@@ -9,6 +9,11 @@
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
+#include "text_hires.h"
+/* (the label's font: stb_truetype as text_hires.c has it, here for this file alone) */
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "../third_party/stb/stb_truetype.h"
 
 #define MASK_WIDTH 128
 #define MASK_HEIGHT 16
@@ -23,7 +28,8 @@ static struct {
     int started;
     unsigned *base;
     unsigned base_width,base_height;
-    GLuint feedback,mask;
+    GLuint feedback,mask,label;
+    int label_ready;
     int feedback_ready;
     unsigned feedback_width,feedback_height;
     /* progress_bar.c's wobble_phase and last_t */
@@ -33,8 +39,12 @@ static struct {
 void mac_loading_start(const unsigned *pixels,unsigned width,unsigned height,unsigned pitch_pixels)
 {
     unsigned y;
+    GLuint label=loading.label;
+    int label_ready=loading.label_ready;
     free(loading.base);
     memset(&loading,0,sizeof(loading));
+    /* (the label's texture is made once) */
+    loading.label=label;loading.label_ready=label_ready;
     if(pixels&&width&&height&&width<=4096&&height<=4096&&pitch_pixels>=width) {
         loading.base=(unsigned *)malloc((size_t)width*height*sizeof(unsigned));
         if(loading.base) {
@@ -115,38 +125,106 @@ static void make_feedback(unsigned width,unsigned height)
     loading.feedback_ready=1;
 }
 
-/* The indicator (mac.loading_indicator): "LOADING" in 5x7 block letters drawn here (no font is
-   loaded on this screen), a ring of dots turning, and a thin bar of the progress. All sizes are
-   of the window's height over 480 lines. */
-static const unsigned char indicator_glyphs[7][7]={
-    /* L */ {0x10,0x10,0x10,0x10,0x10,0x10,0x1f},
-    /* O */ {0x0e,0x11,0x11,0x11,0x11,0x11,0x0e},
-    /* A */ {0x0e,0x11,0x11,0x1f,0x11,0x11,0x11},
-    /* D */ {0x1e,0x11,0x11,0x11,0x11,0x11,0x1e},
-    /* I */ {0x0e,0x04,0x04,0x04,0x04,0x04,0x0e},
-    /* N */ {0x11,0x19,0x15,0x13,0x11,0x11,0x11},
-    /* G */ {0x0e,0x11,0x10,0x17,0x11,0x11,0x0f}
-};
-static void draw_indicator(float w,float h,float unit,float t)
+/* The indicator (mac.loading_indicator, on by default): "LOADING" in the project's Overpass (the font that
+   draws the menus' text, taken from the fonts the build embeds for text_hires.c and rasterized once, here, into
+   a texture), a ring of dots turning, and a thin bar of the progress, on a dark rounded backing so that they
+   stand clear of the faded menu. All sizes are of the window's height over 480 lines. */
+#define LABEL_WIDTH 512
+#define LABEL_HEIGHT 128
+#define LABEL_CAPS 64.0f
+#define LABEL_BASELINE 96
+
+static void make_label(void)
 {
-    float cell=2.5f*unit,gap=cell*1.5f,text_width=7.0f*(5.0f*cell)+6.0f*gap;
-    float left=(w-text_width)*0.5f,base=h*0.5f-3.5f*cell-48.0f*unit,dot_size=4.0f*unit;
-    float centre_x=w*0.5f,centre_y=h*0.5f+14.0f*unit,radius=22.0f*unit;
-    float bar_left=w*0.5f-120.0f*unit,bar_right=w*0.5f+120.0f*unit,bar_y=base-28.0f*unit,bar_h=3.0f*unit;
-    int letter,row,column,dot;
-    glDisable(GL_TEXTURE_2D);glDisable(GL_TEXTURE_RECTANGLE_ARB);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(0.85f,0.92f,1.0f,0.9f);
-    glBegin(GL_QUADS);
+    unsigned char *bitmap;
+    unsigned index;
+    const struct text_hires_embedded *font=NULL;
+    stbtt_fontinfo info;
+    int x0,y0,x1,y1,pen=0,letter,total=0;
+    float scale;
+    static const char word[]="LOADING";
+    loading.label_ready=1; /* (once: a font that cannot be read leaves the label out) */
+    for(index=0;index<text_hires_embedded_count;++index)
+        if(text_hires_embedded[index].file&&strstr(text_hires_embedded[index].file,"Overpass-900")){font=&text_hires_embedded[index];break;}
+    if(!font)return;
+    if(!stbtt_InitFont(&info,(const unsigned char *)font->data,stbtt_GetFontOffsetForIndex((const unsigned char *)font->data,0)))return;
+    if(!stbtt_GetCodepointBox(&info,'H',&x0,&y0,&x1,&y1)||y1<=y0)return;
+    scale=LABEL_CAPS/(float)(y1-y0);
+    bitmap=(unsigned char *)calloc(LABEL_WIDTH,LABEL_HEIGHT);
+    if(!bitmap)return;
+    /* (the letters, spaced a little wider than the font's, centred in the texture: first measured, then drawn) */
     for(letter=0;letter<7;++letter) {
-        const unsigned char *rows=indicator_glyphs[letter];
-        float x0=left+(float)letter*(5.0f*cell+gap);
-        for(row=0;row<7;++row)for(column=0;column<5;++column) {
-            if(rows[row]&(0x10>>column)) {
-                float x=x0+(float)column*cell,y=base+(float)(6-row)*cell;
-                glVertex2f(x,y);glVertex2f(x+cell,y);glVertex2f(x+cell,y+cell);glVertex2f(x,y+cell);
-            }
+        int advance,bearing;
+        stbtt_GetCodepointHMetrics(&info,word[letter],&advance,&bearing);
+        total+=(int)(advance*scale+0.5f)+(letter<6?6:0);
+    }
+    pen=(LABEL_WIDTH-total)/2;
+    if(pen<0)pen=0;
+    for(letter=0;letter<7;++letter) {
+        int advance,bearing,left,top,right,bottom,x,y;
+        stbtt_GetCodepointHMetrics(&info,word[letter],&advance,&bearing);
+        stbtt_GetCodepointBitmapBox(&info,word[letter],scale,scale,&left,&top,&right,&bottom);
+        x=pen+left;y=LABEL_BASELINE+top;
+        if(x>=0&&y>=0&&x+(right-left)<=LABEL_WIDTH&&y+(bottom-top)<=LABEL_HEIGHT)
+            stbtt_MakeCodepointBitmap(&info,bitmap+(size_t)y*LABEL_WIDTH+x,right-left,bottom-top,LABEL_WIDTH,scale,scale,word[letter]);
+        pen+=(int)(advance*scale+0.5f)+6;
+    }
+    glGenTextures(1,&loading.label);
+    glBindTexture(GL_TEXTURE_2D,loading.label);
+    glPixelStorei(GL_UNPACK_ALIGNMENT,1);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_ALPHA8,LABEL_WIDTH,LABEL_HEIGHT,0,GL_ALPHA,GL_UNSIGNED_BYTE,bitmap);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    free(bitmap);
+}
+
+/* a rounded rectangle (a fan), the corners eight steps each */
+static void rounded_rectangle(float left,float bottom,float right,float top,float radius)
+{
+    int corner,step;
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f((left+right)*0.5f,(bottom+top)*0.5f);
+    for(corner=0;corner<4;++corner) {
+        float cx=(corner==0||corner==3)?right-radius:left+radius;
+        float cy=(corner<2)?top-radius:bottom+radius;
+        for(step=0;step<=8;++step) {
+            float angle=(float)(LOADING_PI*0.5*((double)corner+(double)step/8.0));
+            glVertex2f(cx+(float)cos(angle)*radius,cy+(float)sin(angle)*radius);
         }
     }
+    glVertex2f(right,top);
+    glEnd();
+}
+
+static void draw_indicator(float w,float h,float unit,float t)
+{
+    float label_scale=20.0f*unit/LABEL_CAPS,label_w=(float)LABEL_WIDTH*label_scale,label_h=(float)LABEL_HEIGHT*label_scale;
+    float base=h*0.5f-57.0f*unit,dot_size=4.0f*unit;
+    float centre_x=w*0.5f,centre_y=h*0.5f+14.0f*unit,radius=22.0f*unit;
+    float bar_left=w*0.5f-120.0f*unit,bar_right=w*0.5f+120.0f*unit,bar_y=base-28.0f*unit,bar_h=3.0f*unit;
+    float label_left=centre_x-label_w*0.5f,label_bottom=base-(float)(LABEL_HEIGHT-LABEL_BASELINE)*label_scale;
+    int dot;
+    glDisable(GL_TEXTURE_2D);glDisable(GL_TEXTURE_RECTANGLE_ARB);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    /* (the backing: dark, and not opaque, so that the faded menu shows through a little) */
+    glColor4f(0.0f,0.02f,0.05f,0.72f);
+    rounded_rectangle(centre_x-150.0f*unit,bar_y-16.0f*unit,centre_x+150.0f*unit,centre_y+radius+dot_size+18.0f*unit,16.0f*unit);
+    if(!loading.label_ready)make_label();
+    if(loading.label) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D,loading.label);
+        glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);
+        glColor4f(0.85f,0.92f,1.0f,1.0f);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0f,0.0f);glVertex2f(label_left,label_bottom+label_h);
+        glTexCoord2f(1.0f,0.0f);glVertex2f(label_left+label_w,label_bottom+label_h);
+        glTexCoord2f(1.0f,1.0f);glVertex2f(label_left+label_w,label_bottom);
+        glTexCoord2f(0.0f,1.0f);glVertex2f(label_left,label_bottom);
+        glEnd();
+        glDisable(GL_TEXTURE_2D);
+    }
+    glBegin(GL_QUADS);
     /* (twelve dots; the head of the turn is the brightest, the tail fades) */
     for(dot=0;dot<12;++dot) {
         float turn=loading.wobble*40.0f; /* (the wobble advances 0.01 a frame) */
@@ -289,6 +367,7 @@ void mac_loading_stop(void)
 {
     if(loading.feedback)glDeleteTextures(1,&loading.feedback);
     if(loading.mask)glDeleteTextures(1,&loading.mask);
+    if(loading.label)glDeleteTextures(1,&loading.label);
     free(loading.base);
     memset(&loading,0,sizeof(loading));
 }

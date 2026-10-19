@@ -352,8 +352,8 @@ fewer pixels than the window has is scaled with linear filtering, or doubled
 without blur where the window is a whole number of its pixels each way.
 The loading screen (mac_loading.c) is not the game's frame: it fills the window's
 framebuffer itself, as the movies do (`tools/mac_loading_checks.sh` enters a level
-through the menus in a hidden 1280x800 window and checks the loading frames' size). `mac.loading_indicator` adds a "LOADING" label,
-a ring of turning dots and a progress bar to it.
+through the menus in a hidden 1280x800 window and checks the loading frames' size). `mac.loading_indicator` (on by default) adds a "LOADING" label
+in Overpass (rasterized from the embedded font), a ring of turning dots and a progress bar on a dark rounded backing to it.
 
 What is drawn with more pixels is the 3D view, the HUD's high-res redraws
 and everything drawn as geometry. Text and the HUD pictures the game has

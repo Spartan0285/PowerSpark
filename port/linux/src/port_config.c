@@ -565,10 +565,10 @@ static const struct config_setting config_settings[] =
 		"their lower detail levels, fog, smaller particles, and last the frame's\n"
 		"resolution (480 lines). The log gives each change and, at the end of a\n"
 		"run, a summary (\"adaptive detail\")." },
-	{ "mac.loading_indicator", _config_boolean, "false", "HALO_MAC_LOADING_INDICATOR", _environment_value,
+	{ "mac.loading_indicator", _config_boolean, "true", "HALO_MAC_LOADING_INDICATOR", _environment_value,
 		_platform_mac,
-		"Draw a \"LOADING\" label, a ring of turning dots and a thin progress bar\n"
-		"over the loading screen while a level loads, so that it is plain that\n"
+		"Draw a \"LOADING\" label (in Overpass), a ring of turning dots and a thin\n"
+		"progress bar, on a dark rounded backing, over the loading screen while a level loads, so that it is plain that\n"
 		"the game is working. false (the Xbox game's own loading screen: its\n"
 		"light band sweeping over the faded menu, and nothing else)." },
 	{ "mac.texture_cache_mb", _config_integer, "0", "HALO_MAC_RETAIL_TEXTURE_CACHE_MB", _environment_value,
