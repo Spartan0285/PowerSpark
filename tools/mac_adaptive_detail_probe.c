@@ -72,6 +72,13 @@ int main(void)
     g.level = MAC_ADAPT_RUNGS;
     CHECK(mac_governor_level_down(&g, 0) == MAC_ADAPT_RUNGS);
 
+    /* the unit rungs passed over (mac.adaptive_units off): the step after the models' lowest detail is the resolution */
+    g.level = MAC_ADAPT_MODELS_LOWEST + 1;
+    CHECK(mac_governor_level_down(&g, (1u << MAC_ADAPT_UNITS_SMALL) | (1u << MAC_ADAPT_UNITS_MEDIUM) | (1u << MAC_ADAPT_UNITS_LARGE)) == MAC_ADAPT_RUNGS);
+    CHECK(mac_governor_level_up(&g, (1u << MAC_ADAPT_UNITS_SMALL) | (1u << MAC_ADAPT_UNITS_MEDIUM) | (1u << MAC_ADAPT_UNITS_LARGE)) == MAC_ADAPT_MODELS_LOWEST);
+    g.level = MAC_ADAPT_RUNGS;
+    CHECK(mac_governor_level_up(&g, (1u << MAC_ADAPT_UNITS_SMALL) | (1u << MAC_ADAPT_UNITS_MEDIUM) | (1u << MAC_ADAPT_UNITS_LARGE)) == MAC_ADAPT_MODELS_LOWEST + 1);
+
     /* every rung skipped: nothing to step */
     mac_governor_reset(&g, 30.0);
     steps = run(&g, 60.0, 500, (1u << MAC_ADAPT_RUNGS) - 1u, &elapsed, &last);

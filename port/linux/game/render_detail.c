@@ -184,6 +184,11 @@ static unsigned render_detail_governor_skipped(
 	{
 		skipped |= (1u << MAC_ADAPT_DETAIL_OBJECTS) | (1u << MAC_ADAPT_FLARES) | (1u << MAC_ADAPT_FOG);
 	}
+	if (!mac_adaptive_detail_units_allowed())
+	{
+		/* port: units are never left out unless mac.adaptive_units says so */
+		skipped |= (1u << MAC_ADAPT_UNITS_SMALL) | (1u << MAC_ADAPT_UNITS_MEDIUM) | (1u << MAC_ADAPT_UNITS_LARGE);
+	}
 	if (!render_detail_base_decals)
 	{
 		skipped |= 1u << MAC_ADAPT_DECALS;
@@ -291,7 +296,7 @@ static void render_detail_governor_apply(
 	{
 		lod = lod > 0.1f ? 0.1f : lod;
 	}
-	if (level > MAC_ADAPT_UNITS_SMALL)
+	if (level > MAC_ADAPT_UNITS_SMALL && mac_adaptive_detail_units_allowed())
 	{
 		unit_pixels = level > MAC_ADAPT_UNITS_LARGE ? 48.f : level > MAC_ADAPT_UNITS_MEDIUM ? 24.f : 12.f;
 	}

@@ -565,6 +565,13 @@ static const struct config_setting config_settings[] =
 		"their lower detail levels, fog, smaller particles, and last the frame's\n"
 		"resolution (480 lines). The log gives each change and, at the end of a\n"
 		"run, a summary (\"adaptive detail\")." },
+	{ "mac.adaptive_units", _config_boolean, "false", "HALO_MAC_ADAPTIVE_UNITS", _environment_value,
+		_platform_mac,
+		"Lets mac.adaptive_detail's last steps leave out bipeds and vehicles that\n"
+		"are small on screen (under 12, then 24, then 48 pixels, with what they\n"
+		"carry) when the frames still take too long. false: the units are always\n"
+		"drawn, and the frame's resolution (480 lines) is the step after the\n"
+		"models' lowest detail." },
 	{ "mac.swap_interval", _config_integer, "0", "HALO_MAC_SWAP_INTERVAL", _environment_value,
 		_platform_mac,
 		"With display.vsync on, how many refreshes of the display a frame lasts:\n"

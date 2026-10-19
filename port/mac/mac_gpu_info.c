@@ -392,6 +392,19 @@ void mac_adaptive_detail_set_skipped(unsigned mask)
     adaptive_render_skipped = mask;
 }
 
+int mac_adaptive_detail_units_allowed(void)
+{
+    static unsigned long read_at = (unsigned long)-1;
+    static int allowed;
+    unsigned long changes = config_changes ? config_changes() : 0;
+    if (changes != read_at) {
+        const char *env = getenv("HALO_MAC_ADAPTIVE_UNITS");
+        read_at = changes;
+        allowed = env && env[0] ? env[0] == '1' : (config_boolean ? config_boolean("mac.adaptive_units") : 0);
+    }
+    return allowed;
+}
+
 int mac_adaptive_detail_resolution_capped(void)
 {
     return adaptive_on && adaptive.level > MAC_ADAPT_RESOLUTION && adaptive_resolution_available();

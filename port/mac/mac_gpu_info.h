@@ -57,6 +57,9 @@ unsigned long mac_adaptive_detail_serial(void);
 void mac_adaptive_detail_set_skipped(unsigned mask);
 /* whether the last rung is in force: the frame is drawn with 480 lines */
 int mac_adaptive_detail_resolution_capped(void);
+/* whether the ladder may leave out bipeds and vehicles (its last rungs but one; mac.adaptive_units, off by
+   default: the units are never left out unless the player says so) */
+int mac_adaptive_detail_units_allowed(void);
 /* wait_seconds: the part of the frame that was waiting, the limiter's and the swap's (not work) */
 void mac_adaptive_detail_note_frame(double seconds, double wait_seconds);
 /* the seconds a swap waited for the display in the frame about to be noted (for the summary) */
