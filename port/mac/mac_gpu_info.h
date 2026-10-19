@@ -53,7 +53,12 @@ unsigned long mac_adaptive_detail_serial(void);
 void mac_adaptive_detail_set_skipped(unsigned mask);
 /* whether the last rung is in force: the frame is drawn with 480 lines */
 int mac_adaptive_detail_resolution_capped(void);
+/* wait_seconds: the part of the frame that was waiting, the limiter's and the swap's (not work) */
 void mac_adaptive_detail_note_frame(double seconds, double wait_seconds);
+/* the seconds a swap waited for the display in the frame about to be noted (for the summary) */
+void mac_adaptive_detail_note_swap_wait(double seconds);
+/* HALO_MAC_GOV_WALL=1 (diagnostic): the governor as it was before the swap's wait was taken off, for comparing */
+int mac_adaptive_detail_wall_mode(void);
 void mac_adaptive_detail_new_map(void);
 /* the run's summary into the log, if the governor was on */
 void mac_adaptive_detail_summary(void);

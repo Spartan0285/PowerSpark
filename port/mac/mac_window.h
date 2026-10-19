@@ -34,6 +34,14 @@ void platform_request_quit(void);
 int mac_window_quit_requested_active(void);
 /* the seconds the frame rate limiter has waited since this was last asked (a frame's work is its time less this) */
 double mac_window_take_limiter_wait(void);
+/* the swap interval in force, the seconds the swaps waited for the display since last asked (0 with no swap
+   interval), the display's refresh rate (0: unknown) and a way to change the interval (the adaptive detail's) */
+int mac_window_swap_interval(void);
+double mac_window_take_swap_wait(void);
+int mac_window_display_refresh(void);
+int mac_window_set_swap_interval(int interval);
+/* HALO_MAC_SIM_VSYNC=<hertz> (diagnostic): a hidden run waits as a swap would; called after each frame */
+void mac_window_simulate_swap(void);
 /* Resize the one active window/surface. Returns false where the requested
    dimensions cannot be applied by its native owner. */
 int mac_window_resize_active(unsigned width,unsigned height);

@@ -17,6 +17,11 @@
 extern const char *config_string(const char *name) __attribute__((weak));
 extern long config_integer(const char *name) __attribute__((weak));
 extern unsigned long config_changes(void) __attribute__((weak));
+extern int config_boolean(const char *name) __attribute__((weak));
+/* port/mac/mac_window.c, when linked */
+extern int mac_window_swap_interval(void) __attribute__((weak));
+extern int mac_window_set_swap_interval(int interval) __attribute__((weak));
+extern int mac_window_display_refresh(void) __attribute__((weak));
 
 static int info_vram_mb;
 static int info_resolved;
@@ -347,6 +352,28 @@ int mac_adaptive_detail_resolution_capped(void)
 }
 
 /* seconds: the time since the previous frame; wait_seconds: how much of it a frame rate limiter waited */
+/* ---------- the swap's wait (mac_window.c), for the summary */
+static double swap_wait_total;
+static unsigned long swap_wait_frames;
+
+int mac_adaptive_detail_wall_mode(void)
+{
+    static int mode = -1;
+    if (mode < 0) {
+        const char *value = getenv("HALO_MAC_GOV_WALL");
+        mode = value && value[0] == '1';
+    }
+    return mode;
+}
+
+void mac_adaptive_detail_note_swap_wait(double seconds)
+{
+    if (seconds > 0.0) { swap_wait_total += seconds; ++swap_wait_frames; }
+}
+
+
+/* seconds: the time since the previous frame; wait_seconds: how much of it was a wait that is not the
+   frame's work: a frame rate limiter's and, with vsync, the swap's wait for the display (mac_window.c) */
 void mac_adaptive_detail_note_frame(double seconds, double wait_seconds)
 {
     double work = seconds - wait_seconds;
@@ -355,6 +382,10 @@ void mac_adaptive_detail_note_frame(double seconds, double wait_seconds)
     if (work < 0.0) work = 0.0;
     adaptive_refresh();
     if (!adaptive_on) return;
+    /* with a swap interval the work is under the target by a margin, so that it does not meet a refresh
+       it just misses; the rungs come back at MAC_GOV_UP_UNDER of it (the band between is the hysteresis) */
+    adaptive.down_over = (!mac_adaptive_detail_wall_mode() && mac_window_swap_interval && mac_window_swap_interval() > 0) ?
+        MAC_GOV_VSYNC_DOWN_OVER : MAC_GOV_DOWN_OVER;
     if (adaptive_forced_level() >= 0) {
         if (adaptive.level != adaptive_forced) {
             adaptive.level = adaptive_forced;
@@ -404,6 +435,9 @@ void mac_adaptive_detail_summary(void)
     fprintf(stderr, "adaptive detail summary: target %.1f ms, frames %lu, mean %.2f ms, maximum level %d, final level %d, steps down %lu, up %lu, last 300 frames mean %.2f ms\n",
         adaptive.budget_ms, adaptive.counted, adaptive.total_ms / (double)adaptive.counted, adaptive.maximum_level,
         adaptive.level, adaptive.downs, adaptive.ups, adaptive.last_window_ms);
+    if (swap_wait_frames)
+        fprintf(stderr, "adaptive detail swap wait: mean %.2f ms over %lu frames (not counted as work)\n",
+            swap_wait_total * 1000.0 / (double)swap_wait_frames, swap_wait_frames);
     for (level = 0; level <= MAC_ADAPT_RUNGS; ++level)
         if (adaptive.level_frames[level])
             fprintf(stderr, "adaptive detail level %d: %lu frames, mean %.2f ms%s%s\n", level, adaptive.level_frames[level],

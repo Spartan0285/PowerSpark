@@ -345,6 +345,7 @@ extern const char *config_string(const char *name) __attribute__((weak));
    The settings are not linked into every probe that opens a window; without
    them the swap interval stays the driver's (no wait). */
 extern int config_boolean(const char *name) __attribute__((weak));
+static int mac_window_interval_now; /* (see mac_window_swap_interval) */
 static void mac_window_apply_vsync(AGLContext context)
 {
     GLint interval;
@@ -352,7 +353,10 @@ static void mac_window_apply_vsync(AGLContext context)
     interval=config_boolean("display.vsync")?1:0;
     if(!aglSetInteger(context,AGL_SWAP_INTERVAL,&interval))
         fprintf(stderr,"Mac window: the swap interval could not be set\n");
-    else fprintf(stderr,"Mac window: vsync %s\n",interval?"on":"off");
+    else {
+        mac_window_interval_now=interval;
+        fprintf(stderr,"Mac window: vsync %s\n",interval?"on":"off");
+    }
 }
 static int mac_window_open_fullscreen(struct mac_window_state *state)
 {
@@ -794,13 +798,104 @@ long mac_window_screen_commit(void)
     return (long)active_window->width;
 }
 
+/* port: the swap interval now in force (0: none; set where the context's is: mac_window_apply_vsync,
+   mac_window_set_vsync_active, mac_window_set_swap_interval) and the seconds the swaps have waited for the
+   display since this was last asked. With a swap interval the call to aglSwapBuffers is where the frame
+   waits for the vertical blank, so that the time between two frames is a whole number of refreshes whatever
+   the frame's work was; the adaptive detail needs the work (mac_window_take_swap_wait). */
+static int mac_window_interval_now;
+static double mac_window_swap_wait;
+
+/* HALO_MAC_SIM_VSYNC=<hertz> (diagnostic): a hidden run (no window, so no swap) waits as a swap interval on a
+   display of that rate would, for the governor and the frame times to be measured as a visible run's are
+   (mac_window_simulate_swap, called after each frame; the interval is the governor's, 1 to start) */
+static int mac_window_sim_hertz=-1,mac_window_sim_interval=1;
+static int mac_window_sim_on(void)
+{
+    if(mac_window_sim_hertz<0) {
+        const char *value=getenv("HALO_MAC_SIM_VSYNC");
+        mac_window_sim_hertz=value&&value[0]?atoi(value):0;
+    }
+    return mac_window_sim_hertz>0&&!(active_window&&active_window->visible);
+}
+
+int mac_window_swap_interval(void)
+{ return mac_window_sim_on()?mac_window_sim_interval:mac_window_interval_now; }
+
+void mac_window_simulate_swap(void)
+{
+#if defined(__APPLE__)
+    static mach_timebase_info_data_t timebase;
+    static uint64_t epoch;
+    uint64_t now,period,step,wait_until;
+    if(!mac_window_sim_on())return;
+    if(!timebase.denom)mach_timebase_info(&timebase);
+    now=mach_absolute_time();
+    if(!epoch)epoch=now;
+    period=(uint64_t)(1e9/(double)mac_window_sim_hertz)*timebase.denom/timebase.numer;
+    step=period*(uint64_t)(mac_window_sim_interval>0?mac_window_sim_interval:1);
+    wait_until=epoch+((now-epoch)/step+1)*step;
+    if((now-epoch)%step==0)wait_until=now;
+    mach_wait_until(wait_until);
+    mac_window_swap_wait+=(double)(wait_until-now)*timebase.numer/timebase.denom/1e9;
+#endif
+}
+
+double mac_window_take_swap_wait(void)
+{
+    double wait=mac_window_swap_wait;
+    mac_window_swap_wait=0.0;
+    return wait;
+}
+
+/* the display's refresh rate in hertz; 0 when the display does not say (a laptop panel often does not) */
+int mac_window_display_refresh(void)
+{
+#if defined(__APPLE__) && !defined(__LP64__)
+    CFDictionaryRef mode=CGDisplayCurrentMode(kCGDirectMainDisplay);
+    CFNumberRef number;double rate=0.0;
+    if(!mode)return 0;
+    number=(CFNumberRef)CFDictionaryGetValue(mode,kCGDisplayRefreshRate);
+    if(number)CFNumberGetValue(number,kCFNumberDoubleType,&rate);
+    return rate>0.0?(int)(rate+0.5):0;
+#else
+    return 0;
+#endif
+}
+
+int mac_window_set_swap_interval(int interval)
+{
+#if defined(__APPLE__) && !defined(__LP64__)
+    GLint value=interval<0?0:interval>4?4:interval;
+    if(mac_window_sim_on()){mac_window_sim_interval=value<1?1:value;return 1;}
+    if(!active_window||!active_window->agl)return 0;
+    if(value==mac_window_interval_now)return 1;
+    if(!aglSetInteger(active_window->agl,AGL_SWAP_INTERVAL,&value))return 0;
+    mac_window_interval_now=value;
+    return 1;
+#else
+    (void)interval;return 0;
+#endif
+}
+
 int mac_window_present_active(void)
 {
 #if defined(__APPLE__) && !defined(__LP64__)
+    uint64_t before,after;
+    static mach_timebase_info_data_t timebase;
     if(!active_window||!active_window->visible||!active_window->agl||
        !pthread_equal(active_window->owner_thread,pthread_self()))return 0;
     if(!aglSetCurrentContext(active_window->agl))return 0;
+    /* with a swap interval, the frame's own GPU work finishes first, so that the swap's wait is the display's
+       alone and the rest is the frame's work */
+    if(mac_window_interval_now>0)glFinish();
+    before=mach_absolute_time();
     aglSwapBuffers(active_window->agl);
+    after=mach_absolute_time();
+    if(mac_window_interval_now>0) {
+        if(!timebase.denom)mach_timebase_info(&timebase);
+        mac_window_swap_wait+=(double)(after-before)*timebase.numer/timebase.denom/1e9;
+    }
     return 1;
 #else
     return 0;
@@ -946,7 +1041,9 @@ int mac_window_set_vsync_active(int on)
 #if defined(__APPLE__) && !defined(__LP64__)
     GLint interval=on?1:0;
     if(!state||!state->agl)return 0;
-    return aglSetInteger(state->agl,AGL_SWAP_INTERVAL,&interval)?1:0;
+    if(!aglSetInteger(state->agl,AGL_SWAP_INTERVAL,&interval))return 0;
+    mac_window_interval_now=interval;
+    return 1;
 #else
     (void)state;(void)on;return 0;
 #endif

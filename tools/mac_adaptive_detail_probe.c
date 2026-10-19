@@ -99,6 +99,50 @@ int main(void)
     CHECK(g.downs + g.ups < 40);
     CHECK(g.up_backoff >= 2);
 
+    /* vsync: the frame's wall time is a whole number of 16.67 ms refreshes, so the governor is given the work
+       (the swap's wait taken off) and a lower step-down line. Work of 30 ms (wall 33.3) holds a level; work of
+       45 (wall 50) steps down; once the load eases to 20 ms the rungs come back. Fed the wall time instead, as
+       before, a level never came back up (the average cannot go under 0.78 of the target) */
+    {
+        double wall, work;
+        mac_governor_reset(&g, 30.0);
+        g.down_over = MAC_GOV_VSYNC_DOWN_OVER;
+        for (i = 0; i < 2000; ++i) {
+            work = cost(30.0, g.level) + ((i * 7) % 5 - 2) * 0.5;
+            wall = work <= 16.67 ? 16.67 : work <= 33.33 ? 33.33 : 50.0;
+            mac_governor_note(&g, work, wall, 0, &direction);
+        }
+        CHECK(g.level == 0 || cost(30.0, g.level) < 33.3 * MAC_GOV_VSYNC_DOWN_OVER + 1.5);
+        mac_governor_reset(&g, 30.0);
+        g.down_over = MAC_GOV_VSYNC_DOWN_OVER;
+        for (i = 0; i < 3000; ++i) {
+            work = cost(50.0, g.level) + ((i * 7) % 5 - 2) * 0.5;
+            wall = work <= 16.67 ? 16.67 : work <= 33.33 ? 33.33 : 50.0;
+            mac_governor_note(&g, work, wall, 0, &direction);
+        }
+        CHECK(g.level >= 4);
+        CHECK(cost(50.0, g.level) <= 33.3 * MAC_GOV_VSYNC_DOWN_OVER + 2.0);
+        for (i = 0; i < 4000; ++i) {
+            work = cost(22.0, g.level) + ((i * 7) % 5 - 2) * 0.5;
+            wall = work <= 16.67 ? 16.67 : work <= 33.33 ? 33.33 : 50.0;
+            mac_governor_note(&g, work, wall, 0, &direction);
+        }
+        CHECK(g.level == 0 && g.ups > 0);
+        /* the old input, the wall time as the work: work of 22 ms at level 5 is a wall time of 33.3 ms, never under
+           0.78 of the target, so the level never came back; fed the work it does */
+        mac_governor_reset(&g, 30.0);
+        g.level = 5;
+        for (i = 0; i < 3000; ++i)
+            mac_governor_note(&g, 33.33, 33.33, 0, &direction);
+        CHECK(g.ups == 0 && g.level == 5);
+        mac_governor_reset(&g, 30.0);
+        g.down_over = MAC_GOV_VSYNC_DOWN_OVER;
+        g.level = 5;
+        for (i = 0; i < 3000; ++i)
+            mac_governor_note(&g, 22.0, 33.33, 0, &direction);
+        CHECK(g.ups > 0 && g.level < 5);
+    }
+
     /* the budget: 45 frames a second */
     mac_governor_reset(&g, 45.0);
     CHECK(g.budget_ms > 22.0 && g.budget_ms < 22.3);

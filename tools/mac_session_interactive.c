@@ -1332,9 +1332,14 @@ static int mac_interactive_frame(void *opaque,
     {
         /* port: the limiter's wait is taken whether or not it is used, so that it does not add up */
         double limiter_wait = mac_window_take_limiter_wait();
+        /* port: with vsync the swap's wait for the display is not the frame's work (mac_window.c) */
+        double swap_wait = mac_window_take_swap_wait();
+        /* (HALO_MAC_GOV_WALL=1, diagnostic: the governor as it was, the swap's wait counted as work) */
+        if (mac_adaptive_detail_wall_mode()) swap_wait = 0.0;
         if (context->frames) {
             mac_interpolation_note_frame(elapsed); /* port: halo_interpolation_enabled (port/mac/engine_config.c) */
-            mac_adaptive_detail_note_frame(elapsed, limiter_wait); /* port: mac.adaptive_detail (port/mac/mac_gpu_info.c) */
+            mac_adaptive_detail_note_swap_wait(swap_wait);
+            mac_adaptive_detail_note_frame(elapsed, limiter_wait + swap_wait); /* port: mac.adaptive_detail (port/mac/mac_gpu_info.c) */
         }
     }
     if (elapsed > MAC_INTERACTIVE_MAX_ELAPSED)
@@ -2141,6 +2146,7 @@ radar_free_done:
     if ((context->max_frames && context->frames + 1 == context->max_frames) || shot || screenshot || context->request)
         mac_device_gpu_request_readback();
     main_present_frame();
+    mac_window_simulate_swap(); /* port: HALO_MAC_SIM_VSYNC (port/mac/mac_window.c), a hidden run's swap */
     if (phase_tick_at != 0.0) {
         double phase_end = mac_interactive_microseconds();
         mac_phase_frame(context->frames + 1, (phase_render_at - phase_tick_at) / 1000.0, (phase_present_at - phase_render_at) / 1000.0,

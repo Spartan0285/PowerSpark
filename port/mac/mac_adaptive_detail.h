@@ -38,6 +38,7 @@ enum
 #define MAC_GOV_UP_DWELL 240            /* frames to wait after a step before an up (times the back-off) */
 #define MAC_GOV_MIN_SECONDS 1.0         /* and no two steps closer than this */
 #define MAC_GOV_DOWN_OVER 1.00          /* down while the average is above the target times this (1.04 left iBook b30 hovering at a level of 33.9 ms, 0.6 over the target, when one step down holds 32.3) */
+#define MAC_GOV_VSYNC_DOWN_OVER 0.95    /* with vsync on, a frame whose work is over this share of the target is soon a missed refresh (33 ms becomes 50), so the step down comes before the target; the band to MAC_GOV_UP_UNDER is the hysteresis */
 #define MAC_GOV_UP_UNDER 0.78           /* up while it is below the target times this */
 #define MAC_GOV_IGNORE_MS 250.0         /* a frame this long is a load or a pause, not a measure */
 #define MAC_GOV_OVER_RUN 15             /* frames the average must have been over the target before a step down (8 when it is 1.5 times) */
@@ -54,6 +55,7 @@ struct mac_governor
     unsigned frames_in_map;
     unsigned since_change, since_up, over_run;
     unsigned up_backoff;                /* 1 to 8: doubles when an up step is soon undone */
+    double down_over;                   /* the share of the target the average may reach before a step down (MAC_GOV_DOWN_OVER; lower while vsync snaps a frame to whole refreshes) */
     int level, maximum_level;
     unsigned long downs, ups;
     int stepped_up;                     /* an up step happened and has not been undone or outlived */
@@ -68,6 +70,7 @@ static __inline__ void mac_governor_reset(struct mac_governor *g, double target_
     if (target_fps > 120.0) target_fps = 120.0;
     g->budget_ms = 1000.0 / target_fps;
     g->up_backoff = 1;
+    g->down_over = MAC_GOV_DOWN_OVER;
 }
 
 /* a new map: the measure starts again, and so does the ladder (the statistics stay) */
@@ -123,7 +126,7 @@ static __inline__ int mac_governor_note(struct mac_governor *g, double ms, doubl
     else if (g->frames_in_map <= 10) g->average_ms += (sample - g->average_ms) / (double)g->frames_in_map;
     else g->average_ms += (sample - g->average_ms) * 0.1;
     ++g->since_change;
-    if (g->average_ms > g->budget_ms * MAC_GOV_DOWN_OVER) ++g->over_run;
+    if (g->average_ms > g->budget_ms * g->down_over) ++g->over_run;
     else g->over_run = 0;
     if (g->since_up < 100000u) ++g->since_up;
     g->seconds_since_change += (wall_ms > ms ? wall_ms : ms) / 1000.0;
@@ -134,7 +137,7 @@ static __inline__ int mac_governor_note(struct mac_governor *g, double ms, doubl
     }
     if (g->frames_in_map < MAC_GOV_WARMUP_FRAMES || g->seconds_since_change < MAC_GOV_MIN_SECONDS) return 0;
     dwell = g->average_ms > g->budget_ms * 1.5 ? MAC_GOV_SEVERE_DWELL : MAC_GOV_DOWN_DWELL;
-    if (g->average_ms > g->budget_ms * MAC_GOV_DOWN_OVER && g->since_change >= dwell &&
+    if (g->average_ms > g->budget_ms * g->down_over && g->since_change >= dwell &&
         g->over_run >= (g->average_ms > g->budget_ms * 1.5 ? MAC_GOV_OVER_RUN / 2 : MAC_GOV_OVER_RUN)) {
         level = mac_governor_level_down(g, skipped);
         if (level == g->level) return 0;
