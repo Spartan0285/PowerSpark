@@ -521,7 +521,7 @@ int mac_engine_menu_art_resolve(const void *resource, unsigned char sampler,
 	{
 		static long logged;
 
-		if (getenv("HALO_MAC_MENU_DEBUG") && logged < 400)
+		if (getenv("HALO_MAC_MENU_DEBUG") && (logged < 60 || (width == 512 && height == 512 && logged < 4000)))
 		{
 			fprintf(stderr, "menus: art resolve %ldx%ld data %08lx result %d name %u scale %g %g\n", width, height,
 				(unsigned long)base->Data, result, result > 0 ? *name : 0U, result > 0 ? scale[0] : 0.0, result > 0 ? scale[1] : 0.0);

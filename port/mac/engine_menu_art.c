@@ -4,6 +4,7 @@
    HALO_MAC_MENU_ART_DIR (port/assets/menus of a checkout, until the kit
    embeds them). */
 #include "engine_menu_art.h"
+#include "mac_gpu_info.h"
 #include "../linux/include/input_prompts.h"
 #include "../linux/src/port_config.h"
 #include <ApplicationServices/ApplicationServices.h>
@@ -68,6 +69,39 @@ static const char *art_directory(void)
         }
     }
     return found;
+}
+/* port: the redraws are drawn for large displays (list_field is 2048x2048, 16 MB as a texture, when the picture
+   it is drawn as is 320x322): on a 32 MB card one of them does not fit with the frame buffers and the
+   game's own textures, and the card gave a scramble of other textures' pictures (the Choose Difficulty
+   panel, after a level had been played). A picture goes up halved, in both directions, until it is at most
+   1/16 of the card's memory, on a card of 128 MB or less. */
+static void shrink_for_card(unsigned char **pixels,unsigned long *width,unsigned long *height)
+{
+    long vram=mac_gpu_info_vram_mb();
+    unsigned long limit;
+    /* (HALO_MAC_MENU_ART_VRAM_MB: another card's memory, to see a small card's pictures on a large one) */
+    if(getenv("HALO_MAC_MENU_ART_VRAM_MB"))vram=atol(getenv("HALO_MAC_MENU_ART_VRAM_MB"));
+    if(vram<=0||vram>128)return;
+    limit=(unsigned long)vram*1024UL*1024UL/16UL;
+    while(*width*(*height)*4UL>limit&&*width>1&&*height>1) {
+        unsigned long w=*width,h=*height,nw=(w+1)/2,nh=(h+1)/2,x,y;
+        unsigned char *half=(unsigned char *)malloc(nw*nh*4UL);
+        if(!half)return;
+        for(y=0;y<nh;++y)for(x=0;x<nw;++x) {
+            unsigned long x1=2*x+1<w?2*x+1:2*x,y1=2*y+1<h?2*y+1:2*y,c,alpha=0;
+            const unsigned char *p[4];
+            p[0]=*pixels+(2*y*w+2*x)*4;p[1]=*pixels+(2*y*w+x1)*4;p[2]=*pixels+(y1*w+2*x)*4;p[3]=*pixels+(y1*w+x1)*4;
+            /* (straight alpha: the colors are weighted by it, so that a clear texel's color does not bleed) */
+            for(c=0;c<4;++c)alpha+=p[c][3];
+            for(c=0;c<3;++c) {
+                unsigned long sum=0,i;
+                for(i=0;i<4;++i)sum+=(unsigned long)p[i][c]*p[i][3];
+                half[(y*nw+x)*4+c]=alpha?(unsigned char)((sum+alpha/2)/alpha):(unsigned char)((p[0][c]+p[1][c]+p[2][c]+p[3][c]+2)/4);
+            }
+            half[(y*nw+x)*4+3]=(unsigned char)((alpha+2)/4);
+        }
+        free(*pixels);*pixels=half;*width=nw;*height=nh;
+    }
 }
 /* RGBA bytes, top row first; NULL on failure */
 /* port/linux/src/menu_pc_art.c: a frame of the player's own Halo install, if
@@ -145,6 +179,7 @@ static int upload(struct art *art,long width,long height,int variant)
         fprintf(stderr,"menus: %s is %lux%lu, %lu texels with alpha, %lu opaque, first %02x%02x%02x%02x\n",art->png,w,h,visible,opaque,
             pixels[0],pixels[1],pixels[2],pixels[3]);
     }
+    shrink_for_card(&pixels,&w,&h);
     pw=power_of_two(w);ph=power_of_two(h);
     padded=(unsigned char *)calloc(pw*ph,4);
     if(!padded){free(pixels);if(variant)art->variant_failed=1;else art->failed=1;return 0;}
@@ -176,6 +211,7 @@ static int upload(struct art *art,long width,long height,int variant)
         art->variant_scale_u=(float)w/(float)pw;art->variant_scale_v=(float)h/(float)ph;
         return 1;
     }
+    if(getenv("HALO_MAC_MENU_DEBUG"))fprintf(stderr,"menus: %s uploaded as GL texture %u, %lux%lu texels\n",art->png,(unsigned)name,pw,ph);
     art->name=name;art->width=width;art->height=height;
     /* the game's coordinates are 0 to 1 over the picture (the bitmap's own
        size is the picture's, whatever its texels): over the padded texture's
