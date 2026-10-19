@@ -20,7 +20,8 @@ void mac_gpu_textures_forget(GLuint name);
    PlayStation pad's picture of the frame (its PNG's name with "@ps" before the
    extension), if it has one */
 struct art { const void *texture; char *png; GLuint name; float scale_u, scale_v; long width, height; int failed;
-    GLuint variant_name; float variant_scale_u, variant_scale_v; int variant_failed; };
+    GLuint variant_name; float variant_scale_u, variant_scale_v; int variant_failed; int attempts; };
+#define UPLOAD_ATTEMPTS 120
 static struct art arts[MAXIMUM_ART];
 static unsigned art_count;
 void mac_menu_art_register(const void *texture, const char *png)
@@ -124,7 +125,7 @@ static unsigned char *decode(const char *png,unsigned long *width,unsigned long 
 static int upload(struct art *art,long width,long height,int variant)
 {
     unsigned long w=0,h=0,pw,ph,y;unsigned char *pixels,*padded;
-    GLint binding,unpack;GLuint name;
+    GLint binding,unpack;GLuint name;GLenum error;
     char variant_png[1024];
     const char *png=art->png;
     size_t length=strlen(png);
@@ -149,6 +150,10 @@ static int upload(struct art *art,long width,long height,int variant)
     if(!padded){free(pixels);if(variant)art->variant_failed=1;else art->failed=1;return 0;}
     for(y=0;y<h;++y)memcpy(padded+y*pw*4,pixels+y*w*4,w*4);
     free(pixels);
+    /* port: an error an earlier call left (the renderer's, with the card's memory full) is not this
+       upload's: it used to fail the picture for good, and the menu drew what the last draw had bound
+       (a level's preview, in the panel of the difficulty screen, on a 32 MB card) */
+    while(glGetError()!=GL_NO_ERROR){}
     glGetIntegerv(GL_TEXTURE_BINDING_2D,&binding);
     glGetIntegerv(GL_UNPACK_ALIGNMENT,&unpack);
     glGenTextures(1,&name);
@@ -158,7 +163,14 @@ static int upload(struct art *art,long width,long height,int variant)
     glBindTexture(GL_TEXTURE_2D,(GLuint)binding);
     glPixelStorei(GL_UNPACK_ALIGNMENT,unpack);
     free(padded);
-    if(glGetError()!=GL_NO_ERROR){glDeleteTextures(1,&name);if(variant)art->variant_failed=1;else art->failed=1;return 0;}
+    error=glGetError();
+    if(error!=GL_NO_ERROR) {
+        glDeleteTextures(1,&name);
+        /* (no memory is for now: tried again at the next draw, a few times, not failed for good) */
+        if(error==GL_OUT_OF_MEMORY&&art->attempts<UPLOAD_ATTEMPTS){++art->attempts;return 0;}
+        fprintf(stderr,"menus: %s: OpenGL error 0x%04x on upload\n",art->png,(unsigned)error);
+        if(variant)art->variant_failed=1;else art->failed=1;return 0;
+    }
     if(variant) {
         art->variant_name=name;
         art->variant_scale_u=(float)w/(float)pw;art->variant_scale_v=(float)h/(float)ph;
@@ -189,7 +201,10 @@ int mac_menu_art_texture(const void *texture, long width, long height,
             return 1;
         }
     }
-    if(!art->name&&!upload(art,width,height,0))return -1;
+    if(!art->name&&!upload(art,width,height,0)){
+        /* (a picture that is not made yet draws nothing: -1 fails the draw; 0 would take the placeholder's) */
+        return -1;
+    }
     *name=(unsigned int)art->name;
     scale[0]=art->scale_u;scale[1]=art->scale_v;scale[2]=scale[3]=1.0f;
     return 1;
