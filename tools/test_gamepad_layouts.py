@@ -45,3 +45,10 @@ def test_each_layout_gives_every_control_its_own_button():
 def test_halo2_is_the_xboxs_own_layout():
     # A jump, black switch grenades, X action, Y switch weapons, B melee, white flashlight, the triggers, the sticks
     assert layouts()["halo2"] == [0, 4, 2, 3, 1, 5, 6, 7, 12, 13, 14, 15]
+
+
+def test_infinite_has_melee_on_the_right_bumper_and_leaves_the_right_stick_unbound():
+    # black is the right bumper (4), melee is the fifth control; the right stick's click (15) has no control
+    buttons = layouts()["infinite"]
+    assert buttons[4] == 4
+    assert 15 not in buttons

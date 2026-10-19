@@ -217,7 +217,7 @@ direction that has a control does not move the player. The tables are in
 | crouch | left stick | left stick | B | right stick | B |
 | action, reload | X | right bumper | X | X | X |
 | switch weapons | Y | Y | Y | Y | Y |
-| melee | B | B | right bumper | right bumper | right stick |
+| melee | B | B | right bumper | right bumper | right bumper |
 | throw a grenade | left trigger | left trigger | left trigger | left bumper | left bumper |
 | switch grenades | right bumper | left bumper | d-pad right | d-pad right | d-pad left |
 | flashlight | left bumper | d-pad up | left bumper | d-pad up | d-pad up |

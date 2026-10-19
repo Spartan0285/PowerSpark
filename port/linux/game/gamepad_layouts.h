@@ -70,10 +70,12 @@ static struct gamepad_layout const gamepad_layouts[NUMBER_OF_GAMEPAD_LAYOUTS] =
 	right bumper melee, left trigger zoom (smart-link), d-pad right next
 	grenade, d-pad up flashlight (orders) (B, its thruster pack, is unbound) */
 	{ "halo5", { 0, 11, 2, 3, 4, 8, 5, 7, 12, 13, 15, 6 }, 14 },
-	/* Halo Infinite: B crouch, left bumper grenade, right stick melee, left
+	/* Halo Infinite: B crouch, left bumper grenade, right bumper melee, left
 	trigger zoom, left stick sprint, d-pad up flashlight, d-pad left grenade
-	switching (right bumper, its equipment, is unbound) */
-	{ "infinite", { 0, 10, 2, 3, 15, 8, 5, 7, 12, 13, 1, 6 }, 14 },
+	switching (the right stick's click, which Infinite has melee on, and its
+	equipment have no control here and are unbound; melee is on the right
+	bumper as the player asked) */
+	{ "infinite", { 0, 10, 2, 3, 4, 8, 5, 7, 12, 13, 1, 6 }, 14 },
 };
 
 #endif

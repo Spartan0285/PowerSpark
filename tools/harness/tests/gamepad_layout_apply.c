@@ -48,11 +48,11 @@ int main(int argc, char **argv)
 	else if (!strcmp(argv[1], "infinite"))
 	{
 		apply("infinite", &preferences);
-		/* jump A, switch grenades d-pad left, action X, switch weapons Y, melee right stick, flashlight d-pad up,
+		/* jump A, switch grenades d-pad left, action X, switch weapons Y, melee right bumper (black), flashlight d-pad up,
 		   grenade left bumper (white), fire right trigger, crouch B, zoom left trigger */
 		CHECK(preferences.game_control_to_xbox_buttons[_game_control_jump] == 0, "jump");
 		CHECK(preferences.game_control_to_xbox_buttons[_game_control_switch_grenades] == 10, "switch grenades");
-		CHECK(preferences.game_control_to_xbox_buttons[_game_control_melee] == 15, "melee");
+		CHECK(preferences.game_control_to_xbox_buttons[_game_control_melee] == 4, "melee");
 		CHECK(preferences.game_control_to_xbox_buttons[_game_control_flashlight] == 8, "flashlight");
 		CHECK(preferences.game_control_to_xbox_buttons[_game_control_grenade] == 5, "grenade");
 		CHECK(preferences.game_control_to_xbox_buttons[_game_control_crouch] == 1, "crouch");
