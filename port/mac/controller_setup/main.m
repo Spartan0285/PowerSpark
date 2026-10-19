@@ -221,7 +221,7 @@ static int DeviceNumber(IOHIDDeviceRef device, CFStringRef key)
 	NSSlider *leftSlider, *rightSlider;
 	NSButton *invertBox, *saveButton, *skipButton;
 	NSPopUpButton *layoutPopup;
-	NSTextField *legend[3]; /* the legend's three columns */
+	NSTextField *legend; /* what the chosen preset puts on each button */
 	IOHIDManagerRef manager;
 	NSMutableArray *devices; /* NSValue of IOHIDDeviceRef */
 	NSMutableDictionary *reportBuffers; /* NSValue of IOHIDDeviceRef -> NSMutableData */
@@ -443,12 +443,12 @@ static CFMutableDictionaryRef MatchPage(int page, int usage)
 	   Controllers tab, from the bottom up: buttons, invert, sliders, the pad view (160), the status line, the
 	   instructions */
 	const float margin = 10, inner = 474;
-	float instrH = ThemeSize(kInstructions, kThemeSmallSystemFont, inner - 6, YES).height + 14;
+	float instrH = ThemeSize(kInstructions, kThemeSmallSystemFont, inner - 6, YES).height + 6;
 	float headH = ThemeSize(kHeading, kThemeEmphasizedSystemFont, inner - 6, YES).height + 4;
 	float statusH = [self statusHeight];
-	float boxH = headH + instrH + 12 + 8;
-	const float sh = 62; /* the button layout's legend, below the invert box row (which also has its popup) */
-	float statusY = 286 + sh, boxY = statusY + statusH + 6;
+	float boxH = headH + instrH + 12 + 4;
+	const float sh = 42; /* the button layout's legend, below the invert box row (which also has its popup) */
+	float statusY = 284 + sh, boxY = statusY + statusH + 6;
 	float height = boxY + boxH + 10;
 	float btHeight = CSBluetoothContentHeight();
 	float contentH = height > btHeight ? height : btHeight;
@@ -526,8 +526,7 @@ static CFMutableDictionaryRef MatchPage(int page, int usage)
 		[layoutPopup setTarget:self];
 		[layoutPopup setAction:@selector(layoutChanged:)];
 		[padGroup addSubview:layoutPopup];
-		for (i = 0; i < 3; i++)
-			legend[i] = [self labelAt:NSMakeRect(10 + 168 * i, 44, 166, 56) text:@"" bold:NO];
+		legend = [self labelAt:NSMakeRect(10, 44, 500, 40) text:@"" bold:NO];
 	}
 
 	skipButton = [self buttonAt:NSMakeRect(10, 6, 90, 32) title:@"Skip" action:@selector(skip:)];
@@ -929,33 +928,25 @@ NSSize CSThemeSize(NSString *text, ThemeFontID font, float width, BOOL wrap)
 	[padView setNeedsDisplay:YES];
 }
 
-/* The legend: for the chosen preset, each control and its button (the table's), in three columns of four. */
+/* The legend: for the chosen preset, each control and its button (the table's), as a paragraph. */
 - (void)layoutChanged:(id)sender
 {
-	int n = [layoutPopup indexOfSelectedItem], i, entries = 0;
-	NSMutableString *col[3];
+	int n = [layoutPopup indexOfSelectedItem], i;
+	NSMutableString *text = [NSMutableString string];
 	const struct gamepad_layout *l;
 
-	for (i = 0; i < 3; i++)
-		col[i] = [NSMutableString string];
 	if (n < 0 || n >= NUMBER_OF_GAMEPAD_LAYOUTS)
 		n = 0;
 	l = &gamepad_layouts[n];
 	if (n == _gamepad_layout_profile) {
-		[legend[0] setStringValue:@"Keeps the buttons of the game's own layout (Halo CE's; the same as Halo 2's)."];
-		[legend[1] setStringValue:@""];
-		[legend[2] setStringValue:@""];
+		[legend setStringValue:@"Keeps the buttons of the game's own layout (Halo CE's; the same as Halo 2's)."];
 		return;
 	}
-	for (i = 0; i < 12; i++) {
-		if (!kControlNames[i])
-			continue;
-		[col[entries / 4] appendFormat:@"%s: %s\n", kControlNames[i], l->buttons[i] < 16 ? kButtonNames[l->buttons[i]] : "none"];
-		entries++;
-	}
-	[col[entries / 4] appendFormat:@"Sprint: %s", l->sprint < 16 ? kButtonNames[l->sprint] : "none"];
-	for (i = 0; i < 3; i++)
-		[legend[i] setStringValue:col[i]];
+	for (i = 0; i < 12; i++)
+		if (kControlNames[i])
+			[text appendFormat:@"%s: %s.  ", kControlNames[i], l->buttons[i] < 16 ? kButtonNames[l->buttons[i]] : "none"];
+	[text appendFormat:@"Sprint: %s.", l->sprint < 16 ? kButtonNames[l->sprint] : "none"];
+	[legend setStringValue:text];
 }
 
 - (void)finish:(BOOL)skipOnly

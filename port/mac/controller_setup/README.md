@@ -39,7 +39,7 @@ universal (ppc + i386) binary.
 - `--dump-text` prints the window's texts and control sizes, with the size
   each text needs (`GetThemeTextDimensions`), and marks any that is cut off;
   it opens no window.
-- The Controllers tab's "Button layout" popup (the launcher's choices) sets `input.gamepad_layout` when Save is pressed; the legend under it is drawn from `port/linux/game/gamepad_layouts.h`, the table the game applies.
+- The Controllers tab's "Button layout" popup (the launcher's choices) sets `input.gamepad_layout` when Save is pressed; the legend under it, a paragraph, is drawn from `port/linux/game/gamepad_layouts.h`, the table the game applies.
 - The Bluetooth tab's checkbox "Use Bluetooth controllers in PowerSpark" sets `input.bluetooth` in config.toml (through `cs_config_set`), which lets the game open the dongle and take a paired pad's input (`../mac_bt_input.c`).
 - The Bluetooth (experimental) tab, in the same window as the Controllers tab (one window, a tab view), is a test area for pairing and live-testing a
   DualSense or DualShock 4 over PowerSpark's own Bluetooth stack (`../bt/`), through a
