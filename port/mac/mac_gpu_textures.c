@@ -1676,6 +1676,37 @@ static int native_decode_level(const struct xgpu_texture_description *descriptio
     return 1;
 }
 
+/* port: a D3D-created texture of an Xbox map's session (the font's glyph cache, the default textures, a screenshot) is filled by
+   the engine's own stores, in the host's byte order, but the shared decoder reads a texel as the console stores it (little-
+   endian): on a big-endian host a 16 or 32 bit texel is swapped in its own width first. A texture the map supplies is never
+   D3D-created (the cache points at the map's bytes), so it is read as it is. The copy is one scratch buffer, reused. */
+#if defined(__BIG_ENDIAN__) || defined(__ppc__) || defined(__POWERPC__)
+static const unsigned char *engine_texels_little_endian(const D3DBaseTexture *native, const struct xgpu_texture_description *description,
+    const unsigned char *texels, unsigned long length)
+{
+    static unsigned char *scratch;
+    static unsigned long scratch_size;
+    struct format_information information;
+    unsigned long at;
+    if (!(native->Common & D3DCOMMON_D3DCREATED) || description->compressed) return texels;
+    information = format_information(description->format);
+    if (information.bytes != 2 && information.bytes != 4) return texels;
+    if (length > scratch_size) {
+        unsigned char *grown = (unsigned char *)realloc(scratch, length);
+        if (!grown) return texels;
+        scratch = grown; scratch_size = length;
+    }
+    for (at = 0; at + information.bytes <= length; at += information.bytes) {
+        unsigned unit;
+        for (unit = 0; unit < information.bytes; ++unit) scratch[at + unit] = texels[at + information.bytes - 1 - unit];
+    }
+    for (; at < length; ++at) scratch[at] = texels[at];
+    return scratch;
+}
+#else
+#define engine_texels_little_endian(native, description, texels, length) (texels)
+#endif
+
 static GLuint xbox_texture_get(const void *resource, unsigned char sampler, unsigned stage,
     GLenum *target_out, unsigned *levels_out, float scale_out[4], struct xbox_texture_entry **entry_out,
     const char **error)
@@ -1841,6 +1872,7 @@ static GLuint xbox_texture_get(const void *resource, unsigned char sampler, unsi
                 tex_shadow_forget_name(object); glDeleteTextures(1, &object);
                 set_error(error, "native mip range exceeds its bounded face"); return 0;
             }
+            if (!as_dxt) texels = engine_texels_little_endian(native, &description, texels, next_offset - level_offset);
             if (as_dxt) {
                 glCompressedTexImage2D(face_target, (GLint)(level - first_level), xbox_dxt_format(description.format),
                     (GLsizei)width, (GLsizei)height, 0, (GLsizei)(next_offset - level_offset), texels);
